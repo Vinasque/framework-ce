@@ -1,3 +1,5 @@
+// implementação para banco de dados
+
 #ifndef REPOSITORIO_BANCO_H
 #define REPOSITORIO_BANCO_H
 

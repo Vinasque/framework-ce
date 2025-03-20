@@ -1,3 +1,5 @@
+// dispar execução (periódica)
+
 #ifndef TRIGGER_TIMER_H
 #define TRIGGER_TIMER_H
 

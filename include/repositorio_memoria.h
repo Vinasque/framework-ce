@@ -1,3 +1,5 @@
+// implementação em memória
+
 #ifndef REPOSITORIO_MEMORIA_H
 #define REPOSITORIO_MEMORIA_H
 

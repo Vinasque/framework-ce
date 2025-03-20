@@ -1,3 +1,5 @@
+// implementação para arquivos
+
 #ifndef REPOSITORIO_ARQUIVO_H
 #define REPOSITORIO_ARQUIVO_H
 

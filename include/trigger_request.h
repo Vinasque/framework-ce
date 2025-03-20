@@ -1,3 +1,5 @@
+// dispara execução (por requisição)
+
 #ifndef TRIGGER_REQUEST_H
 #define TRIGGER_REQUEST_H
 
