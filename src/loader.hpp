@@ -18,6 +18,25 @@ public:
     ~Loader() {
         if (db) sqlite3_close(db);
     }
+
+    void carregarDataFrame(const DataFrame<std::string>& df) {
+        if (!db) return;
+
+        int rows = df.numRows();
+        for (int i = 0; i < rows; ++i) {
+            std::string data = df.getValue("data", i);
+            int faturamento = std::stoi(df.getValue("faturamento", i));
+
+            if (entradaExiste(data)) {
+                atualizar(data, faturamento);
+            } else {
+                inserir(data, faturamento);
+            }
+        }
+    }
+
+private:
+    sqlite3* db;
 };
 
 #endif
