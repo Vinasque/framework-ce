@@ -1,1 +1,0 @@
-// interface para os repositórios
