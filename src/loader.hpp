@@ -10,7 +10,7 @@ class Loader {
 public:
     Loader(const std::string& db_name) {
         if (sqlite3_open(db_name.c_str(), &db)) {
-            std::cerr << "Erro ao abrir banco: " << sqlite3_errmsg(db) << std::endl;
+            std::cerr << "Error opening database: " << sqlite3_errmsg(db) << std::endl;
             db = nullptr;
         }
     }
@@ -19,18 +19,18 @@ public:
         if (db) sqlite3_close(db);
     }
 
-    void carregarDataFrame(const DataFrame<std::string>& df) {
+    void loadDataFrame(const DataFrame<std::string>& df) {
         if (!db) return;
 
         int rows = df.numRows();
         for (int i = 0; i < rows; ++i) {
-            std::string data = df.getValue("data", i);
-            int faturamento = std::stoi(df.getValue("faturamento", i));
+            std::string date = df.getValue("date", i);
+            int revenue = std::stoi(df.getValue("revenue", i));
 
-            if (entradaExiste(data)) {
-                atualizar(data, faturamento);
+            if (entryExists(date)) {
+                update(date, revenue);
             } else {
-                inserir(data, faturamento);
+                insert(date, revenue);
             }
         }
     }
