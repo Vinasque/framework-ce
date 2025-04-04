@@ -1,54 +1,66 @@
+// handler.hpp
 #ifndef HANDLER_HPP
 #define HANDLER_HPP
 
-#include <iostream>
 #include <queue>
 #include <thread>
 #include <mutex>
-#include <vector>
 #include <condition_variable>
-#include "dataframe.hpp" 
 
-template <typename T>
-class Handler {
+struct Reservation {
+    std::string flight_id;
+    std::string seat;
+    std::string user_id;
+    std::string customer_name;
+    std::string status;
+    std::string payment_method;
+    std::string reservation_time;
+    double amount;
+};
+
+class BaseHandler {
 protected:
-    std::queue<T> inputQueue;
-    std::vector<std::queue<T>> outputQueues;
+    std::queue<Reservation> inputQueue;
     std::mutex inputMutex;
-    std::vector<std::mutex> outputMutexes;
     std::condition_variable cv;
-    bool isRunning = true;
-    std::vector<Reservation>& reservations; 
-
+    bool running = true;
+    
 public:
-    virtual void run() = 0;
-
-    void addInputData(const T& data) {
+    virtual void process(Reservation& res) = 0;
+    
+    void addReservation(const Reservation& res) {
         std::lock_guard<std::mutex> lock(inputMutex);
-        inputQueue.push(data);
+        inputQueue.push(res);
         cv.notify_one();
     }
-
-    // Função para parar a thread
+    
     void stop() {
-        isRunning = false;
-        cv.notify_all(); // Notifica todas as threads em espera
+        running = false;
+        cv.notify_all();
     }
+    
+    virtual ~BaseHandler() {}
+};
 
-    Handler(size_t numOutputQueues, std::vector<"""df""">& res) 
-        : reservations(res), outputQueues(numOutputQueues), outputMutexes(numOutputQueues) {}
+class ValidationHandler : public BaseHandler {
+public:
+    void process(Reservation& res) override {
+        // Validate reservation
+        // Remove invalid reservations
+    }
+};
 
-    virtual ~Handler() {}
+class DateHandler : public BaseHandler {
+public:
+    void process(Reservation& res) override {
+        // Adjust dates to consider only days
+    }
+};
 
-    bool getOutputData(size_t queueIndex, T& data) {
-        if (queueIndex >= outputQueues.size()) return false;
-        
-        std::lock_guard<std::mutex> lock(outputMutexes[queueIndex]);
-        if (outputQueues[queueIndex].empty()) return false;
-        
-        data = outputQueues[queueIndex].front();
-        outputQueues[queueIndex].pop();
-        return true;
+class RevenueHandler : public BaseHandler {
+public:
+    void process(Reservation& res) override {
+        // Calculate aggregated revenue per day
     }
 };
 
