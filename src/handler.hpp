@@ -1,44 +1,55 @@
+#ifndef HANDLER_HPP
+#define HANDLER_HPP
+
 #include <iostream>
 #include <queue>
 #include <thread>
 #include <mutex>
 #include <vector>
-#include <functional>
-#include "dataframe.hpp"
+#include <condition_variable>
+#include "dataframe.hpp" 
 
 template <typename T>
 class Handler {
-public:
-    queue<"""estrutura do df"""> inputQueue;
-    std::vector<std::queue<"""estrutura do df"""> outputQueues;
-    
-    // mutex para as filas de entrada e saída
+protected:
+    std::queue<T> inputQueue;
+    std::vector<std::queue<T>> outputQueues;
     std::mutex inputMutex;
     std::vector<std::mutex> outputMutexes;
-
+    std::condition_variable cv;
     bool isRunning = true;
+    std::vector<Reservation>& reservations; 
 
-    // metodo das sublasses
+public:
     virtual void run() = 0;
 
-    // add dados na fila de entrada
-    void addInputData(int data) {
+    void addInputData(const T& data) {
         std::lock_guard<std::mutex> lock(inputMutex);
         inputQueue.push(data);
         cv.notify_one();
     }
 
-    // função pra bloquear a thread quando for conveniente
+    // Função para parar a thread
     void stop() {
         isRunning = false;
-        cv.notify_one();
+        cv.notify_all(); // Notifica todas as threads em espera
     }
 
-    // construtor que inicializa o número de filas de saída
-    Handler(size_t numOutputQueues) {
-        outputQueues.resize(numOutputQueues);
-        outputMutexes.resize(numOutputQueues);
-    }
+    Handler(size_t numOutputQueues, std::vector<"""df""">& res) 
+        : reservations(res), outputQueues(numOutputQueues), outputMutexes(numOutputQueues) {}
 
-    virtual ~Handler(){}
+    virtual ~Handler() {}
+
+    bool getOutputData(size_t queueIndex, T& data) {
+        if (queueIndex >= outputQueues.size()) return false;
+        
+        std::lock_guard<std::mutex> lock(outputMutexes[queueIndex]);
+        if (outputQueues[queueIndex].empty()) return false;
+        
+        data = outputQueues[queueIndex].front();
+        outputQueues[queueIndex].pop();
+        return true;
+    }
 };
+
+#endif // HANDLER_HPP
