@@ -10,7 +10,7 @@
 template <typename T>
 class DataFrame {
 public:
-    // Construtor
+    // Constructor
     DataFrame() {};
     DataFrame(std::vector<std::string> columns, std::vector<Series<T>> series) {
         if (columns.size() != series.size()) {
@@ -21,11 +21,11 @@ public:
             addColumn(columns[i], series[i]);
         }
 
-        shape.first = series[0].size();  // Atualiza o número de linhas
-        shape.second = series.size();    // Atualiza o número de colunas
+        shape.first = series[0].size();  // Update row count
+        shape.second = series.size();    // Update column count
     }
 
-    // Cópia
+    // Copy
     DataFrame<T> copy() {
         return DataFrame<T>(columns, series);
     }
@@ -36,18 +36,18 @@ public:
         columns.clear();
     }
 
-    // Adicionar coluna
+    // Add column
     void addColumn(const std::string& columnName, const Series<T>& newSeries) {
         if (shape.first != 0 && shape.first != newSeries.size()) {
             throw std::invalid_argument("Series must have the same size as the DataFrame.");
         }
         columns.push_back(columnName);
         series.push_back(newSeries);
-        shape.first = newSeries.size();  // Atualiza o número de linhas
-        shape.second = series.size();    // Atualiza o número de colunas
+        shape.first = newSeries.size();  // Update row count
+        shape.second = series.size();    // Update column count
     }
 
-    // Remover coluna
+    // Remove column
     void dropColumn(const std::string& columnName) {
         int column = column_id(columnName);
         if (column == -1) {
@@ -55,10 +55,10 @@ public:
         }
         columns.erase(columns.begin() + column);
         series.erase(series.begin() + column);
-        shape.second = series.size();  // Atualiza o número de colunas
+        shape.second = series.size();  // Update column count
     }
 
-    // Acesso por nome de coluna
+    // Column access by name
     Series<T>& operator[](const std::string& columnName) {
         int column = column_id(columnName);
         if (column == -1) {
@@ -67,7 +67,7 @@ public:
         return series[column];
     }
 
-    // Acesso por lista de colunas
+    // Access by list of columns
     DataFrame<T> operator[](const std::vector<std::string>& columnNames) {
         DataFrame<T> result;
         for (const auto& column : columnNames) {
@@ -76,7 +76,7 @@ public:
         return result;
     }
 
-    // Concatenação
+    // Concatenation
     DataFrame<T> concat(const DataFrame<T>& other) {
         if (columns != other.columns) {
             throw std::invalid_argument("DataFrames must have the same columns to concatenate.");
@@ -88,7 +88,7 @@ public:
         return result;
     }
 
-    // Soma de uma coluna
+    // Column sum
     T sum(const std::string& columnName) {
         int column = column_id(columnName);
         if (column == -1) {
@@ -101,7 +101,7 @@ public:
         return total;
     }
 
-    // Média de uma coluna
+    // Column mean
     T mean(const std::string& columnName) {
         int column = column_id(columnName);
         if (column == -1) {
@@ -111,7 +111,7 @@ public:
         return total / shape.first;
     }
 
-    // Valor máximo de uma coluna
+    // Column max value
     T max(const std::string& columnName) {
         int column = column_id(columnName);
         if (column == -1) {
@@ -127,7 +127,7 @@ public:
         return maxVal;
     }
 
-    // Impressão do DataFrame
+    // Print DataFrame
     void print() const {
         for (const auto& column : columns) {
             std::cout << std::setw(15) << column;
@@ -142,8 +142,18 @@ public:
         }
     }
 
+    // Get shape of DataFrame
+    std::pair<int, int> getShape() const {
+        return shape;
+    }
+
+    // Get column names
+    const std::vector<std::string>& getColumns() const {
+        return columns;
+    }
+
 private:
-    // Identificar a coluna pelo nome
+    // Find column index by name
     int column_id(const std::string& columnName) const {
         for (int i = 0; i < columns.size(); i++) {
             if (columns[i] == columnName) {
@@ -153,7 +163,7 @@ private:
         return -1;
     }
 
-    std::vector<std::string> columns;  // Nomes das colunas
-    std::vector<Series<T>> series;     // Séries de dados (colunas)
-    std::pair<int, int> shape;         // Forma do DataFrame (número de linhas e colunas)
+    std::vector<std::string> columns;  // Column names
+    std::vector<Series<T>> series;     // Data series (columns)
+    std::pair<int, int> shape;         // DataFrame shape (rows, columns)
 };
