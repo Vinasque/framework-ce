@@ -8,8 +8,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": true,
-      "cwd": "c:/Users/João Gabriel/Desktop/FGV_Pastas/5oPeriodo/Computacao_escalavel/framework-ce",
-      "program": "c:/Users/João Gabriel/Desktop/FGV_Pastas/5oPeriodo/Computacao_escalavel/framework-ce/build/Debug/outDebug",
+      "cwd": "c:/Users/João Gabriel/Desktop/FGV_Pastas/5oPeriodo/Computacao_escalavel/framework-ce/src",
+      "program": "c:/Users/João Gabriel/Desktop/FGV_Pastas/5oPeriodo/Computacao_escalavel/framework-ce/src/build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [
