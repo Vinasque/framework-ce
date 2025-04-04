@@ -55,14 +55,14 @@ void testDataFrame() {
 
     // Somando a coluna A
     int sumA = df.sum("A");
-    std::cout << "\nSoma da coluna A: " << sumA << std::endl;  // Esperado: 10 (1 + 2 + 3 + 4)
+    std::cout << "\nSoma da coluna A: " << sumA << std::endl; //Esperado: 10
 
     // Calculando a média da coluna B
     int meanB = df.mean("B");
-    std::cout << "Média da coluna B: " << meanB << std::endl;  // Esperado: 6 (5 + 6 + 7 + 8 / 4)
+    std::cout << "Média da coluna B: " << meanB << std::endl; //Esperado: 6
 
     int maxB = df.max("B");
-    std::cout << "Max coluna B: " << maxB << std::endl;
+    std::cout << "Max coluna B: " << maxB << std::endl; //Esperado: 8
 
     DataFrame<int> df2 = df.copy();
     DataFrame<int> df3 = df2.concat(df);
@@ -71,7 +71,6 @@ void testDataFrame() {
 }
 
 int main() {
-    // Rodando os testes
     testSeries();
     testDataFrame();
 
