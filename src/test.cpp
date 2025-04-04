@@ -1,65 +1,84 @@
 #include <iostream>
 #include <vector>
-#include "series.hpp" 
-#include "dataframe.hpp" 
+#include <algorithm>
+#include <map>
+#include <iomanip>
+#include "series.hpp"
+#include "dataframe.hpp"
+#include "extractor.hpp"
 
-// Função de teste para a classe Series
+// Function to test Series class
 void testSeries() {
-    std::cout << "Testando Series" << std::endl;
+    std::cout << "Testing Series" << std::endl;
 
-    // Criando uma série de inteiros
+    // Creating an integer series
     Series<int> s1({1, 2, 3, 4, 5});
 
-    // Adicionando um elemento à série
+    // Adding an element to the series
     s1.addElement(6);
-    s1.print(); 
+    s1.print();
 
-    // Criando uma segunda série e somando com a primeira
+    // Creating a second series and adding to the first
     Series<int> s2({6, 7, 8, 9, 10, 11});
     Series<int> s3 = s1.addSeries(s2);
-    s3.print(); 
+    s3.print();
 
-    // Testando acesso por índice
-    std::cout << "Elemento na posição 3 de s1: " << s1[3] << std::endl;  // Esperado: 4
+    // Testing index access
+    std::cout << "Element at position 3 of s1: " << s1[3] << std::endl;  // Expected: 4
 }
+void testDataFrameWithRealData() {
+    std::cout << "\nTesting DataFrame with real data from orders.json" << std::endl;
 
-// Função de teste para a classe DataFrame
-void testDataFrame() {
-    std::cout << "\nTestando DataFrame" << std::endl;
+    try {
+        // Create extractor and load data
+        Extractor extractor;
+        DataFrame<std::string> df = extractor.extractFromJson("../generator/orders.json");
 
-    // Criando Series de exemplo
-    Series<int> s1({1, 2, 3, 4});
-    Series<int> s2({5, 6, 7, 8});
-    Series<int> s3({9, 10, 11, 12});
+        // Print the entire DataFrame
+        std::cout << "\nFull DataFrame:" << std::endl;
+        df.print();
 
-    // Criando DataFrame com as Series
-    DataFrame<int> df({"A", "B", "C"}, {s1, s2, s3});
+        // Print first 5 rows (if available)
+        std::cout << "\nFirst 5 rows:" << std::endl;
+        auto shape = df.getShape();
+        int num_rows = shape.first;
+        int num_cols = shape.second;
+        auto columns = df.getColumns();
+        
+        for (int i = 0; i < std::min(5, num_rows); ++i) {
+            for (const auto& col : columns) {
+                std::cout << std::setw(20) << df[col][i];
+            }
+            std::cout << std::endl;
+        }
 
-    // Imprimindo DataFrame
-    std::cout << "DataFrame original:" << std::endl;
-    df.print();
+        // Show DataFrame shape
+        std::cout << "\nDataFrame shape: " << num_rows << " rows, " << num_cols << " columns" << std::endl;
 
-    // Adicionando uma nova coluna
-    Series<int> s4({13, 14, 15, 16});
-    df.addColumn("D", s4);
-    std::cout << "\nDataFrame após adicionar coluna D:" << std::endl;
-    df.print();
+        // Show column names
+        std::cout << "\nColumn names:" << std::endl;
+        for (const auto& col : columns) {
+            std::cout << col << std::endl;
+        }
 
-    std::cout << "\nLOL" << std::endl;
-
-    // Somando a coluna A
-    int sumA = df.sum("A");
-    std::cout << "\nSoma da coluna A: " << sumA << std::endl;  // Esperado: 10 (1 + 2 + 3 + 4)
-
-    // Calculando a média da coluna B
-    int meanB = df.mean("B");
-    std::cout << "Média da coluna B: " << meanB << std::endl;  // Esperado: 6 (5 + 6 + 7 + 8 / 4)
+        // Example: Count reservations by status
+        std::cout << "\nReservation status counts:" << std::endl;
+        std::map<std::string, int> statusCounts;
+        Series<std::string> statusSeries = df["status"];
+        for (int i = 0; i < statusSeries.size(); ++i) {
+            statusCounts[statusSeries[i]]++;
+        }
+        for (const auto& [status, count] : statusCounts) {
+            std::cout << status << ": " << count << std::endl;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Error in testDataFrameWithRealData: " << e.what() << std::endl;
+    }
 }
-
 int main() {
-    // Rodando os testes
+    // Run tests
     testSeries();
-    testDataFrame();
+    testDataFrameWithRealData();
 
     return 0;
 }
