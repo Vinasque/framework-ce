@@ -25,6 +25,23 @@ public:
         data_.push_back(value);
     }
 
+    // Função para remover o último elemento da série
+    void removeLastElement() {
+        if (data_.empty()) {
+            throw std::out_of_range("No elements to remove.");
+        }
+        data_.pop_back();  // Remove o último elemento
+    }
+    
+
+    // Função para remover um elemento pelo índice
+    void removeElementAt(int index) {
+        if (index < 0 || index >= data_.size()) {
+            throw std::out_of_range("Index out of range.");
+        }
+        data_.erase(data_.begin() + index);  // Remove o elemento na posição index
+    }    
+
     // Função para adicionar todos os elementos de outra série
     Series<T> appendSeries(const Series<T>& other) const {
         Series<T> result = this->copy();  // Cópia da série atual

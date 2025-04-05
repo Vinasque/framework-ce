@@ -30,6 +30,7 @@ void testSeries() {
 }
 
 // Função de teste para a classe DataFrame
+// Função de teste para a classe DataFrame
 void testDataFrame() {
     std::cout << "\nTestando DataFrame" << std::endl;
 
@@ -48,7 +49,7 @@ void testDataFrame() {
     // Adicionando uma nova coluna
     Series<int> s4({13, 14, 15, 16});
     df.addColumn("D", s4);
-    std::cout << "\nDataFrame dps adicionar coluna D:" << std::endl;
+    std::cout << "\nDataFrame após adicionar coluna D:" << std::endl;
     df.print();
 
     std::cout << "\nLOL" << std::endl;
@@ -62,13 +63,33 @@ void testDataFrame() {
     std::cout << "Média da coluna B: " << meanB << std::endl; //Esperado: 6
 
     int maxB = df.max("B");
-    std::cout << "Max coluna B: " << maxB << std::endl; //Esperado: 8
+    std::cout << "Máximo da coluna B: " << maxB << std::endl; //Esperado: 8
 
+    // Copiando e concatenando DataFrames
     DataFrame<int> df2 = df.copy();
     DataFrame<int> df3 = df2.concat(df);
 
+    std::cout << "\nDataFrame concatenado (df2 + df):" << std::endl;
     df3.print();
+
+    // Testando a função deleteLine
+    std::cout << "\nTestando deleteLine" << std::endl;
+    df.deleteLine(2);  // Remover a linha [3, 7, 11, 15]
+    std::cout << "DataFrame após remover a linha [3, 7, 11, 15]:" << std::endl;
+    df.print();
+
+    // Testando a função deleteLastLine
+    std::cout << "\nTestando deleteLastLine" << std::endl;
+    df.deleteLastLine();  // Remover a última linha
+    std::cout << "DataFrame após remover a última linha:" << std::endl;
+    df.print();
+
+    // Filtrando DataFrame: Mantendo apenas as linhas onde A > 2
+    DataFrame<int> filteredDF = df.filter("B", ">", 5);
+    std::cout << "\nDataFrame após filtro (B > 5):" << std::endl;
+    filteredDF.print();
 }
+
 
 int main() {
     testSeries();

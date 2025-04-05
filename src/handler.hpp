@@ -1,44 +1,67 @@
-#include <iostream>
+// handler.hpp
+#ifndef HANDLER_HPP
+#define HANDLER_HPP
+
 #include <queue>
 #include <thread>
 #include <mutex>
-#include <vector>
-#include <functional>
-#include "dataframe.hpp"
+#include <condition_variable>
 
-template <typename T>
-class Handler {
-public:
-    queue<"""estrutura do df"""> inputQueue;
-    std::vector<std::queue<"""estrutura do df"""> outputQueues;
-    
-    // mutex para as filas de entrada e saída
-    std::mutex inputMutex;
-    std::vector<std::mutex> outputMutexes;
-
-    bool isRunning = true;
-
-    // metodo das sublasses
-    virtual void run() = 0;
-
-    // add dados na fila de entrada
-    void addInputData(int data) {
-        std::lock_guard<std::mutex> lock(inputMutex);
-        inputQueue.push(data);
-        cv.notify_one();
-    }
-
-    // função pra bloquear a thread quando for conveniente
-    void stop() {
-        isRunning = false;
-        cv.notify_one();
-    }
-
-    // construtor que inicializa o número de filas de saída
-    Handler(size_t numOutputQueues) {
-        outputQueues.resize(numOutputQueues);
-        outputMutexes.resize(numOutputQueues);
-    }
-
-    virtual ~Handler(){}
+struct Reservation {
+    std::string flight_id;
+    std::string seat;
+    std::string user_id;
+    std::string customer_name;
+    std::string status;
+    std::string payment_method;
+    std::string reservation_time;
+    double amount;
 };
+
+class BaseHandler {
+protected:
+    std::queue<Reservation> inputQueue;
+    std::mutex inputMutex;
+    std::condition_variable cv;
+    bool running = true;
+    
+public:
+    virtual void process(Reservation& res) = 0;
+    
+    void addReservation(const Reservation& res) {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        inputQueue.push(res);
+        cv.notify_one();
+    }
+    
+    void stop() {
+        running = false;
+        cv.notify_all();
+    }
+    
+    virtual ~BaseHandler() {}
+};
+
+class ValidationHandler : public BaseHandler {
+public:
+    void process(Reservation& res) override {
+        // Validate reservation
+        // Remove invalid reservations
+    }
+};
+
+class DateHandler : public BaseHandler {
+public:
+    void process(Reservation& res) override {
+        // Adjust dates to consider only days
+    }
+};
+
+class RevenueHandler : public BaseHandler {
+public:
+    void process(Reservation& res) override {
+        // Calculate aggregated revenue per day
+    }
+};
+
+#endif // HANDLER_HPP
