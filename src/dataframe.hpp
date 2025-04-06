@@ -47,7 +47,7 @@ public:
         shape.second = series.size();    // Update no count das colunas
     }
 
-    // Remove yna coluna
+    // Remove uma coluna
     void dropColumn(const std::string& columnName) {
         int column = column_id(columnName);
         if (column == -1) {
@@ -83,6 +83,23 @@ public:
     
         shape.first--;  // Decrementa o número de linhas
     }
+
+    int numRows() const {
+        return shape.first;
+    }
+
+    // Retorna o valor em uma célula (coluna + linha)
+    T getValue(const std::string& columnName, int row) const {
+        int colIdx = column_id(columnName);
+        if (colIdx == -1) {
+            throw std::invalid_argument("Column does not exist: " + columnName);
+        }
+        if (row < 0 || row >= shape.first) {
+            throw std::out_of_range("Row index out of range.");
+        }
+        return series[colIdx][row];
+    }
+
     
 // Função para filtrar as linhas de um DataFrame baseado em uma condição numérica
 DataFrame<T> filter(const std::string& columnName, const std::string& condition, T value) {
