@@ -101,12 +101,12 @@ public:
     }
 
     
-    // Função para filtrar as linhas de um DataFrame baseado em uma condição numérica
-    DataFrame<T> filter(const std::string& columnName, const std::string& condition, T value) {
-        int column = column_id(columnName);
-        if (column == -1) {
-            throw std::invalid_argument("Column does not exist: " + columnName);
-        }
+// Função para filtrar as linhas de um DataFrame baseado em uma condição numérica
+DataFrame<T> filter(const std::string& columnName, const std::string& condition, T value) {
+    int column = column_id(columnName);
+    if (column == -1) {
+        throw std::invalid_argument("Column does not exist: " + columnName);
+    }
 
     // Criar um DataFrame de resultado que irá conter apenas as linhas que atendem à condição
     DataFrame<T> result;
