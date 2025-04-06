@@ -61,11 +61,12 @@ public:
         }
     }
 
-    // ✅ Novo método para verificar status da thread
+    // verificar status da thread
     bool isRunning() const {
         return running;
     }
 
+    // remover item da fila
     bool tryPop(Reservation& res) {
         std::unique_lock<std::mutex> lock(inputMutex);
         if (inputQueue.empty()) return false;
@@ -121,11 +122,13 @@ public:
         }
     }
 
+    // retorna a receita
     double getTotalRevenue() const {
         std::lock_guard<std::mutex> lock(revenueMutex);
         return totalRevenue;
     }
 
+    // reseta a receita
     void resetRevenue() {
         std::lock_guard<std::mutex> lock(revenueMutex);
         totalRevenue = 0.0;

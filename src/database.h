@@ -11,12 +11,12 @@
 
 class DataBase {
 public:
-    sqlite3* db;      // Ponteiro para o banco de dados
-    int rc;           // Mensagem de status do SQLite
-    char* errMsg;     // Mensagem de erro, caso ocorra
-    std::string sql;  // Query
+    sqlite3* db;      // ponteiro para o banco de dados
+    int rc;           // mensagem de status do SQLite
+    char* errMsg;     // mensagem de erro, caso ocorra
+    std::string sql;  // query
 
-    // Construtor: abre o banco de dados
+    // abre o banco de dados
     DataBase(const std::string& db_name) {
         rc = sqlite3_open(db_name.c_str(), &db);
         if (rc) {
@@ -25,31 +25,8 @@ public:
         }
         std::cout << "Banco de dados aberto com sucesso!" << std::endl;
 
-        // Cria uma tabela teste
-        sql = "CREATE TABLE IF NOT EXISTS tabela_teste (id INTEGER PRIMARY KEY, name TEXT, value INTEGER);";
-        errMsg = nullptr;
-        rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &errMsg);
-        
-        // Teste se criou corretamente
-        if (rc != SQLITE_OK) {   
-            std::cout << "Erro ao criar tabela: " << errMsg << std::endl;
-            sqlite3_free(errMsg); }
-    
-        // Insere valores na tabela
-        sql = "INSERT INTO tabela_teste (name, value) VALUES ('GuiBuss', 69);";
-        errMsg = nullptr;
-        rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &errMsg);
-
-        // Teste se inseriu corretamente
-        if (rc != SQLITE_OK) {   
-            std::cout << "Erro ao Inserir dados: " << errMsg << std::endl;
-            sqlite3_free(errMsg); }
-        else {
-            std::cout << "Tabela teste criada e dados inserido corretamente!" << std::endl;
-        }
     }
 
-    // O destruidor é chamado automaticamnete assim que o objeto DataBase sair do escopo
     ~DataBase() {
         if (db) {
             sqlite3_close(db); // Fecha a conexão com o modelo
@@ -57,16 +34,40 @@ public:
         }
     }
 
+    // criar tabela
+    void createTable(const std::string& table_name, const std::string& schema)
+    {
+        sql = "CREATE TABLE IF NOT EXISTS " + table_name + " " + schema + ";";
+        // (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)
+        errMsg = nullptr;
+        rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &errMsg);
 
+        if (rc != SQLITE_OK) {   
+            std::cout << "Erro ao criar tabela: " << errMsg << std::endl;
+            sqlite3_free(errMsg); }
+        else {
+            std::cout << "Tabela criada corretamente!" << std::endl;
+        }
+    }
 
+    // inserir valores na tabela
+    void insertValuesintoTable(const std::string& table_name, const std::string& date, const std::string& revenue)
+    {                                                                                  
+        sql = "INSERT INTO " + table_name + " (date, revenue) VALUES ('" + date + "', " + revenue + ");";
+        errMsg = nullptr;
+        rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &errMsg);
 
+        if (rc != SQLITE_OK) {   
+            std::cout << "Erro ao Inserir dados: " << errMsg << std::endl;
+            sqlite3_free(errMsg); }
+        else {
+            std::cout << "Dados inseridos corretamente!" << std::endl;
+        }
+    }
 
-
-
-
-    // Método para imprimir toda a  (usado pra teste)
+    // imprimir a tabela
     void printTable(const std::string& tableName) {
-        // Callback que será chamada para cada linha do resultado
+        // callback que será chamada para cada linha do resultado
         auto callback = [](void* data, int argc, char** argv, char** colNames) -> int {
             for(int i = 0; i < argc; i++) {
                 std::cout << colNames[i] << ": " << (argv[i] ? argv[i] : "NULL") << "\t";
