@@ -11,15 +11,14 @@ class Loader {
     public:
         Loader(DataBase& db) : database(db) {}
     
-        // Método para carregar dados financeiros (data + valor)
+        // carregar dados financeiros (data + valor)
         void loadData(const std::string& table_name, const DataFrame<std::string>& df) {
     
-            // Obtém os nomes das colunas
             const auto& cols = df.getColumns();
             const std::string& date_col = cols[0];
             const std::string& value_col = cols[1];
     
-            // Para cada linha, insere no banco
+            // insere cada linha no banco
             for (int i = 0; i < df.numRows(); ++i) {
                 const std::string& date = df.getValue(date_col, i);
                 const std::string& value_str = df.getValue(value_col, i);
