@@ -20,7 +20,7 @@ struct Reservation {
     std::string status;
     std::string payment_method;
     std::string reservation_time;
-    double amount;
+    double price;
 };
 
 class BaseHandler {
@@ -73,8 +73,8 @@ public:
             return;
         }
         
-        if (res.amount <= 0) {
-            res.status = "invalid_amount";
+        if (res.price <= 0) {
+            res.status = "invalid_price";
         }
         
     }
@@ -104,7 +104,7 @@ public:
     void process(Reservation& res) override {
         if (res.status == "confirmed") { 
             std::lock_guard<std::mutex> lock(revenueMutex);
-            totalRevenue += res.amount;
+            totalRevenue += res.price;
         }
     }
 
