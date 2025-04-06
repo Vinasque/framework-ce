@@ -9,6 +9,7 @@
 #include "extractor.hpp"
 #include "handler.hpp"
 #include "threadWorld.hpp"
+#include "loader.hpp"
 
 using namespace std::chrono;
 
@@ -213,101 +214,163 @@ void testRevenueHandler() {
 
 class Pipeline {
 public:
-    Pipeline() : threadWorld(12) {} // Start with 4 threads
+    Pipeline() : threadWorld(4), loader("revenue.db") {}
 
-    void run(bool dynamic_allocation) {
-        try {
-            auto start = high_resolution_clock::now();
+    struct RunResult {
+        long extraction_ms = 0;
+        long processing_ms = 0;
+        long loading_ms = 0;
+        size_t threads_used = 0;
+        long total_ms = 0;
+    };
+
+    RunResult run(bool dynamic_allocation) {
+        RunResult timing;
+        auto total_start = high_resolution_clock::now();
+        
+        // 1. Data Extraction
+        auto extract_start = high_resolution_clock::now();
+        Extractor extractor;
+        DataFrame<std::string> df = extractor.extractFromJson("../generator/orders.json");
+        timing.extraction_ms = duration_cast<milliseconds>(high_resolution_clock::now() - extract_start).count();
+
+        // 2. Data Processing
+        auto process_start = high_resolution_clock::now();
+        
+        // Add handlers to pipeline
+        threadWorld.addHandler(std::make_unique<ValidationHandler>());
+        threadWorld.addHandler(std::make_unique<DateHandler>());
+        threadWorld.addHandler(std::make_unique<RevenueHandler>());
+        
+        // Configure and start processing
+        threadWorld.setDynamicAllocation(dynamic_allocation);
+        threadWorld.start();
+
+        // Feed data into pipeline
+        auto shape = df.getShape();
+        for (int i = 0; i < shape.first; ++i) {
+            Reservation res;
+            res.flight_id = df["flight_id"][i];
+            res.seat = df["seat"][i];
+            res.user_id = df["user_id"][i];
+            res.customer_name = df["customer_name"][i];
+            res.status = df["status"][i];
+            res.payment_method = df["payment_method"][i];
+            res.reservation_time = df["reservation_time"][i];
             
-            Extractor extractor;
-            DataFrame<std::string> df = extractor.extractFromJson("../generator/orders.json");
-
-            // Verify we have the price column
             try {
-                auto& priceCol = df["price"];
-            } catch (const std::invalid_argument&) {
-                std::cerr << "Error: Input data is missing the 'price' column" << std::endl;
-                return;
-            }
-
-            // Create handlers
-            ValidationHandler validationHandler;
-            DateHandler dateHandler;
-            RevenueHandler revenueHandler;
-            
-            // Configure dynamic allocation
-            threadWorld.setDynamicAllocation(dynamic_allocation);
-            threadWorld.start();
-            
-            // Process each reservation
-            auto shape = df.getShape();
-            for (int i = 0; i < shape.first; ++i) {
-                Reservation res;
-                res.flight_id = df["flight_id"][i];
-                res.seat = df["seat"][i];
-                res.user_id = df["user_id"][i];
-                res.customer_name = df["customer_name"][i];
-                res.status = df["status"][i];
-                res.payment_method = df["payment_method"][i];
-                res.reservation_time = df["reservation_time"][i];
-                
-                try {
-                    res.price = std::stod(df["price"][i]);
-                } catch (...) {
-                    std::cerr << "Warning: Invalid price format for reservation " << i 
-                              << ", defaulting to 0.0" << std::endl;
-                    res.price = 0.0;
-                }
-                
-                threadWorld.addDataToBuffer(0, res);
+                res.price = std::stod(df["price"][i]);
+            } catch (...) {
+                res.price = 0.0;
             }
             
-            // Wait for completion
-            while (!threadWorld.isProcessingComplete()) {
-                std::this_thread::sleep_for(milliseconds(100));
-            }
-            
-            auto end = high_resolution_clock::now();
-            auto duration = duration_cast<milliseconds>(end - start);
-            
-            std::cout << "Processing time (" 
-                      << (dynamic_allocation ? "with" : "without") 
-                      << " dynamic allocation): " 
-                      << duration.count() << "ms" << std::endl;
-            
-        } catch (const std::exception& e) {
-            std::cerr << "Pipeline error: " << e.what() << std::endl;
+            threadWorld.addDataToBuffer(0, res);
         }
+
+        // Wait for completion
+        while (!threadWorld.isProcessingComplete()) {
+            std::this_thread::sleep_for(milliseconds(100));
+        }
+        timing.processing_ms = duration_cast<milliseconds>(high_resolution_clock::now() - process_start).count();
+
+        // 3. Data Loading
+        auto load_start = high_resolution_clock::now();
+        loader.loadOrders(df);
+        timing.loading_ms = duration_cast<milliseconds>(high_resolution_clock::now() - load_start).count();
+
+        // Calculate totals
+        timing.total_ms = duration_cast<milliseconds>(high_resolution_clock::now() - total_start).count();
+        timing.threads_used = threadWorld.getThreadCount();
+
+        return timing;
     }
 
 private:
     ThreadWorld threadWorld;
+    Loader loader;
 };
 
 int main() {
     try {
-        // Run tests
+        // Run component tests
         testSeries();
         testDataFrameWithRealData();
-        
-        // New handler tests
         testValidationHandler();
         testDateHandler();
         testRevenueHandler();
-        
-        // Run pipeline
+
+        // Run pipeline performance tests
+        const int runs = 3;
         Pipeline pipeline;
         
-        std::cout << "\nRunning without dynamic thread allocation..." << std::endl;
-        pipeline.run(false);
+        std::vector<Pipeline::RunResult> staticResults;
+        std::vector<Pipeline::RunResult> dynamicResults;
         
-        std::cout << "\nRunning with dynamic thread allocation..." << std::endl;
-        pipeline.run(true);
+        std::cout << "\nTesting without dynamic thread allocation...\n";
+        for (int i = 0; i < runs; ++i) {
+            std::cout << "Run " << i+1 << "...";
+            staticResults.push_back(pipeline.run(false));
+            std::cout << " done\n";
+        }
+        
+        std::cout << "\nTesting with dynamic thread allocation...\n";
+        for (int i = 0; i < runs; ++i) {
+            std::cout << "Run " << i+1 << "...";
+            dynamicResults.push_back(pipeline.run(true));
+            std::cout << " done\n";
+        }
+        
+        // Print results table
+        std::cout << "\n\nPERFORMANCE RESULTS (milliseconds)\n";
+        std::cout << "+----------------------+-----------+-----------+-----------+-----------+----------+\n";
+        std::cout << "| Configuration        | Extraction| Processing| Loading   | Total     | Threads  |\n";
+        std::cout << "+----------------------+-----------+-----------+-----------+-----------+----------+\n";
+        
+        // Static allocation results
+        for (size_t i = 0; i < staticResults.size(); ++i) {
+            const auto& r = staticResults[i];
+            printf("| Static Run %-10zu | %9ld | %9ld | %9ld | %9ld | %8zu |\n", 
+                    i+1, r.extraction_ms, r.processing_ms, r.loading_ms, r.total_ms, r.threads_used);
+        }
+        
+        // Dynamic allocation results
+        for (size_t i = 0; i < dynamicResults.size(); ++i) {
+            const auto& r = dynamicResults[i];
+            printf("| Dynamic Run %-9zu | %9ld | %9ld | %9ld | %9ld | %8zu |\n", 
+                    i+1, r.extraction_ms, r.processing_ms, r.loading_ms, r.total_ms, r.threads_used);
+        }
+        
+        // Calculate averages
+        auto calc_avg = [](const auto& results, auto member) {
+            long sum = 0;
+            for (const auto& r : results) sum += r.*member;
+            return sum / results.size();
+        };
+        
+        Pipeline::RunResult static_avg, dynamic_avg;
+        static_avg.extraction_ms = calc_avg(staticResults, &Pipeline::RunResult::extraction_ms);
+        static_avg.processing_ms = calc_avg(staticResults, &Pipeline::RunResult::processing_ms);
+        static_avg.loading_ms = calc_avg(staticResults, &Pipeline::RunResult::loading_ms);
+        static_avg.total_ms = calc_avg(staticResults, &Pipeline::RunResult::total_ms);
+        
+        dynamic_avg.extraction_ms = calc_avg(dynamicResults, &Pipeline::RunResult::extraction_ms);
+        dynamic_avg.processing_ms = calc_avg(dynamicResults, &Pipeline::RunResult::processing_ms);
+        dynamic_avg.loading_ms = calc_avg(dynamicResults, &Pipeline::RunResult::loading_ms);
+        dynamic_avg.total_ms = calc_avg(dynamicResults, &Pipeline::RunResult::total_ms);
+        
+        // Print averages
+        std::cout << "+----------------------+-----------+-----------+-----------+-----------+----------+\n";
+        printf("| Static Avg           | %9ld | %9ld | %9ld | %9ld | %8s |\n",
+                static_avg.extraction_ms, static_avg.processing_ms, 
+                static_avg.loading_ms, static_avg.total_ms, "N/A");
+        printf("| Dynamic Avg          | %9ld | %9ld | %9ld | %9ld | %8s |\n",
+                dynamic_avg.extraction_ms, dynamic_avg.processing_ms,
+                dynamic_avg.loading_ms, dynamic_avg.total_ms, "N/A");
+        std::cout << "+----------------------+-----------+-----------+-----------+-----------+----------+\n";
         
     } catch (const std::exception& e) {
-        std::cerr << "Fatal error: " << e.what() << std::endl;
+        std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }
-    
     return 0;
 }

@@ -6,6 +6,7 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <queue>
 #include "handler.hpp"
 
 class ThreadWorld {
@@ -54,6 +55,18 @@ public:
                 addWorkerThread();
             }
         }
+    }
+
+    // Add a handler to the pipeline
+    void addHandler(std::unique_ptr<BaseHandler> handler) {
+        std::lock_guard<std::mutex> lock(mtx);
+        handlers.push_back(std::move(handler));
+    }
+
+    // Get current number of worker threads
+    size_t getThreadCount() const {
+        std::lock_guard<std::mutex> lock(mtx);
+        return workers.size();
     }
 
 private:
