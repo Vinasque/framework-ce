@@ -38,7 +38,6 @@ public:
                 paymentMethods.push_back(record["payment_method"].get<std::string>());
                 reservationTimes.push_back(record["reservation_time"].get<std::string>());
 
-                // Aqui usamos "price", que é o nome correto no JSON
                 if (record.contains("price")) {
                     prices.push_back(std::to_string(record["price"].get<double>()));
                 } else {
