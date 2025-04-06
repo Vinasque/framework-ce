@@ -4,15 +4,20 @@
 #include <queue>
 #include <condition_variable>
 #include <stdexcept>
+#include <thread>
+#include <utility> 
 
 /**
- * Implementa uma fila thread-safe com capacidade limitada.
- * 
- * Esta classe gerencia uma fila com um controle de concorrência, permitindo
- * que múltiplos threads possam adicionar e remover itens da fila de forma segura.
- * 
- * O tamanho da fila é limitado e o comportamento de bloqueio é implementado
- * para garantir que os threads esperem quando a fila estiver cheia ou vazia.
+ * @class Queue
+ * @brief Thread-safe communication channel between Handlers.
+ *
+ * The Queue is used to store input and output DataFrames (or any data)
+ * between Handlers in a concurrent ETL pipeline. It guarantees safe access
+ * by multiple threads using a bounded buffer with blocking semantics.
+ *
+ * Typical usage:
+ * - Handlers call `enqueue()` to send data to the next stage.
+ * - Other Handlers call `dequeue()` to consume data.
  */
 template <typename U, typename V>
 class Queue {
@@ -37,7 +42,7 @@ public:
      *
      * Bloqueia até que haja espaço suficiente na fila.
      */
-    void enqueue(std::pair<U, V> item) {
+    void enQueue(std::pair<U, V> item) {
         std::unique_lock<std::mutex> lock(mutex_);
         cv_.wait(lock, [this] { return queue_.size() < capacity_; });  // Espera até ter espaço na fila
 
@@ -50,7 +55,7 @@ public:
      * 
      * Bloqueia até que haja um item na fila.
      */
-    std::pair<U, V> dequeue() {
+    std::pair<U, V> deQueue() {
         std::unique_lock<std::mutex> lock(mutex_);
         cv_.wait(lock, [this] { return !queue_.empty(); });  // Espera até que haja um item para remover
 
