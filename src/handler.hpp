@@ -60,6 +60,19 @@ public:
             process(res);
         }
     }
+
+    // ✅ Novo método para verificar status da thread
+    bool isRunning() const {
+        return running;
+    }
+
+    bool tryPop(Reservation& res) {
+        std::unique_lock<std::mutex> lock(inputMutex);
+        if (inputQueue.empty()) return false;
+        res = inputQueue.front();
+        inputQueue.pop();
+        return true;
+    }
 };
 
 class ValidationHandler : public BaseHandler {
