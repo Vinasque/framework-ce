@@ -8,10 +8,9 @@
 
 class Extractor {
 public:
-    // Constructor
     Extractor() = default;
 
-    // Method to extract data from a JSON file and return as DataFrame
+    // extrair dados de um JSON e retornar como DataFrame
     DataFrame<std::string> extractFromJson(const std::string& filePath) {
         try {
             std::ifstream file(filePath);

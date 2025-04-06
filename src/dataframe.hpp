@@ -21,33 +21,32 @@ public:
             addColumn(columns[i], series[i]);
         }
 
-        shape.first = series[0].size();  // Update no count das linhas
-        shape.second = series.size();    // Update no count das colunas
+        shape.first = series[0].size();  // update no count das linhas
+        shape.second = series.size();    // update no count das colunas
     }
 
-    // Retorna uma cópia
+    // retornar cópia
     DataFrame<T> copy() {
         return DataFrame<T>(columns, series);
     }
 
-    // Desconstrutor
     ~DataFrame() {
         series.clear();
         columns.clear();
     }
 
-    // Adiciona coluna
+    // adicionar coluna
     void addColumn(const std::string& columnName, const Series<T>& newSeries) {
         if (shape.first != 0 && shape.first != newSeries.size()) {
             throw std::invalid_argument("Series must have the same size as the DataFrame.");
         }
         columns.push_back(columnName);
         series.push_back(newSeries);
-        shape.first = newSeries.size();  // Update no count das linhas
-        shape.second = series.size();    // Update no count das colunas
+        shape.first = newSeries.size();  
+        shape.second = series.size();   
     }
 
-    // Remove uma coluna
+    // remover coluna
     void dropColumn(const std::string& columnName) {
         int column = column_id(columnName);
         if (column == -1) {
@@ -55,40 +54,41 @@ public:
         }
         columns.erase(columns.begin() + column);
         series.erase(series.begin() + column);
-        shape.second = series.size();  // Update no count das colunas
+        shape.second = series.size(); 
     }
 
-    // Função para adicionar uma linha ao DataFrame
+    // adicionar linha ao DataFrame
     void addLine(const std::vector<T>& newLine) {
         if (newLine.size() != columns.size()) {
             throw std::invalid_argument("New line must have the same number of elements as the number of columns.");
         }
 
         for (int i = 0; i < columns.size(); ++i) {
-            series[i].addElement(newLine[i]);  // Adiciona o novo valor à Series correspondente
+            series[i].addElement(newLine[i]);  // adiciona o novo valor à 'Series' correspondente
         }
 
-        shape.first++;  // Incrementa o número de linhas no DataFrame
+        shape.first++; 
     }
 
+    // deletar linha
     void deleteLine(int indexToRemove) {
         if (indexToRemove < 0 || indexToRemove >= shape.first) {
             throw std::out_of_range("Index out of range.");
         }
     
-        // Remover o elemento da série correspondente em cada coluna
+        // remover o elemento da série correspondente em cada coluna
         for (int j = 0; j < shape.second; ++j) {
-            series[j].removeElementAt(indexToRemove);  // Remove o elemento da série correspondente
+            series[j].removeElementAt(indexToRemove);
         }
     
-        shape.first--;  // Decrementa o número de linhas
+        shape.first--;
     }
 
     int numRows() const {
         return shape.first;
     }
 
-    // Retorna o valor em uma célula (coluna + linha)
+    // retornar valor em uma célula (coluna + linha)
     T getValue(const std::string& columnName, int row) const {
         int colIdx = column_id(columnName);
         if (colIdx == -1) {
@@ -101,30 +101,26 @@ public:
     }
 
     
-// Função para filtrar as linhas de um DataFrame baseado em uma condição numérica
+// filtrar as linhas de um DataFrame (baseado em uma condição numérica)
 DataFrame<T> filter(const std::string& columnName, const std::string& condition, T value) {
     int column = column_id(columnName);
     if (column == -1) {
         throw std::invalid_argument("Column does not exist: " + columnName);
     }
 
-    // Criar um DataFrame de resultado que irá conter apenas as linhas que atendem à condição
     DataFrame<T> result;
+    std::vector<Series<T>> tempSeries; 
 
-    // Criar uma série temporária para cada coluna
-    std::vector<Series<T>> tempSeries;  // Vetor para armazenar séries temporárias
-
-    // Inicializar as séries temporárias para cada coluna
+    // inicializa as séries temporárias para cada coluna
     for (const auto& columnName : columns) {
         tempSeries.push_back(Series<T>());
     }
 
-    // Filtrar as linhas com base na condição
+    // filtrar as linhas com base na condição
     for (int i = 0; i < shape.first; ++i) {
-        T columnValue = series[column][i];  // Valor da coluna para a linha i
+        T columnValue = series[column][i]; 
         bool conditionMet = false;
 
-        // Verificar a condição
         if (condition == ">") {
             conditionMet = columnValue > value;
         } else if (condition == "<") {
@@ -141,16 +137,13 @@ DataFrame<T> filter(const std::string& columnName, const std::string& condition,
             throw std::invalid_argument("Invalid condition: " + condition);
         }
 
-        // Se a condição for atendida, adicionar a linha ao DataFrame de resultado
         if (conditionMet) {
             for (int j = 0; j < shape.second; ++j) {
-                // Adicionar o valor da linha à série temporária correspondente à coluna
                 tempSeries[j].addElement(series[j][i]);
             }
         }
     }
 
-    // Adicionar as séries temporárias ao DataFrame de resultado
     for (int j = 0; j < shape.second; ++j) {
         result.addColumn(columns[j], tempSeries[j]);
     }
@@ -158,22 +151,19 @@ DataFrame<T> filter(const std::string& columnName, const std::string& condition,
     return result;
 }
 
-
-
+    // remover última linha
     void deleteLastLine() {
         if (shape.first == 0) {
             throw std::out_of_range("No rows to delete.");
         }
     
-        // Remover o último elemento em cada série
         for (int j = 0; j < shape.second; ++j) {
-            series[j].removeLastElement();  // Remover o último elemento de cada série
+            series[j].removeLastElement();
         }
-        shape.first--;  // Decrementa o número de linhas
+        shape.first--; 
     }
     
-
-    // Acesso a uma coluna por nome
+    // acessar coluna pelo nome
     Series<T>& operator[](const std::string& columnName) {
         int column = column_id(columnName);
         if (column == -1) {
@@ -182,7 +172,7 @@ DataFrame<T> filter(const std::string& columnName, const std::string& condition,
         return series[column];
     }
 
-    // Acesso a várias colunas por nome delas
+    // acessar várias colunas pelos nome delas
     DataFrame<T> operator[](const std::vector<std::string>& columnNames) {
         DataFrame<T> result;
         for (const auto& column : columnNames) {
@@ -191,7 +181,7 @@ DataFrame<T> filter(const std::string& columnName, const std::string& condition,
         return result;
     }
 
-    // Concantenação (adiciona uma embaixo da outra)
+    // concantenação (adiciona uma embaixo da outra)
     DataFrame<T> concat(const DataFrame<T>& other) {
         if (columns != other.columns) {
             throw std::invalid_argument("DataFrames must have the same columns to concatenate.");
@@ -203,17 +193,19 @@ DataFrame<T> filter(const std::string& columnName, const std::string& condition,
         return result;
     }
 
+    // filtrar as linhas com base na condição
     DataFrame<T> filter(const Series<bool>& condition) {
         if (condition.size() != shape.first) {
             throw std::invalid_argument("Condition series must have the same length as the DataFrame.");
         }
+        
         DataFrame<T> result;
         for (const auto& column : columns) {
             result.addColumn(column, Series<T>());
         }
     
         for (int i = 0; i < shape.first; ++i) {
-            if (condition[i]) {  // Condição booleana
+            if (condition[i]) { 
                 for (int j = 0; j < shape.second; ++j) {
                     result[columns[j]].addElement(series[j][i]);
                 }
@@ -222,7 +214,7 @@ DataFrame<T> filter(const std::string& columnName, const std::string& condition,
         return result;
     }
 
-    // Soma de uma coluna
+    // somar valores da coluna
     T sum(const std::string& columnName) {
         int column = column_id(columnName);
         if (column == -1) {
@@ -235,7 +227,7 @@ DataFrame<T> filter(const std::string& columnName, const std::string& condition,
         return total;
     }
 
-    // Média de uma coluna
+    // média dos valores da coluna
     T mean(const std::string& columnName) {
         int column = column_id(columnName);
         if (column == -1) {
@@ -245,7 +237,7 @@ DataFrame<T> filter(const std::string& columnName, const std::string& condition,
         return total / shape.first;
     }
 
-    // Máximo de uma coluna
+    // máximo de uma coluna
     T max(const std::string& columnName) {
         int column = column_id(columnName);
         if (column == -1) {
@@ -261,7 +253,7 @@ DataFrame<T> filter(const std::string& columnName, const std::string& condition,
         return maxVal;
     }
 
-    // Printa o df
+    // printar o df
     void print() const {
         for (const auto& column : columns) {
             std::cout << std::setw(15) << column;
@@ -276,16 +268,18 @@ DataFrame<T> filter(const std::string& columnName, const std::string& condition,
         }
     }
 
+    // retornar o número de linhas
     std::pair<int, int> getShape() const {
         return shape;
     }
 
+    // retornar o número de colunas
     const std::vector<std::string>& getColumns() const {
         return columns;
     }
 
 private:
-    // Acha o index da coluna por nome
+    // achar o index da coluna por nome
     int column_id(const std::string& columnName) const {
         for (int i = 0; i < columns.size(); i++) {
             if (columns[i] == columnName) {
@@ -295,7 +289,7 @@ private:
         return -1;
     }
 
-    std::vector<std::string> columns;  // Nomes das colunas
-    std::vector<Series<T>> series;     // Series
-    std::pair<int, int> shape;         // Shape do DF
+    std::vector<std::string> columns;  // nomes das colunas
+    std::vector<Series<T>> series;     // series
+    std::pair<int, int> shape;         // shape do DF
 };
