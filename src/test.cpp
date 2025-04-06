@@ -44,7 +44,7 @@ void testDataFrameWithRealData() {
         auto columns = df.getColumns();
         std::vector<std::string> requiredColumns = {
             "flight_id", "seat", "user_id", "customer_name",
-            "status", "payment_method", "reservation_time", "amount"
+            "status", "payment_method", "reservation_time", "price"
         };
 
         for (const auto& col : requiredColumns) {
@@ -98,6 +98,119 @@ void testDataFrameWithRealData() {
     }
 }
 
+// Função para testar ValidationHandler
+void testValidationHandler() {
+    std::cout << "\nTesting ValidationHandler" << std::endl;
+    
+    ValidationHandler validator;
+    
+    // Caso de teste 1: Reserva válida
+    Reservation validRes;
+    validRes.flight_id = "FL123";
+    validRes.seat = "A1";
+    validRes.user_id = "user456";
+    validRes.customer_name = "João Silva";
+    validRes.status = "confirmed";
+    validRes.payment_method = "credit_card";
+    validRes.reservation_time = "2023-10-01T10:00:00";
+    validRes.price = 299.99;
+    
+    validator.process(validRes);
+    std::cout << "Valid reservation - Status: " << validRes.status 
+              << " (should remain 'confirmed')" << std::endl;
+    
+    // Caso de teste 2: Valor inválido
+    Reservation invalidpriceRes = validRes;
+    invalidpriceRes.price = -100.0;
+    validator.process(invalidpriceRes);
+    std::cout << "Invalid price - Status: " << invalidpriceRes.status 
+              << " (should be 'invalid_price')" << std::endl;
+    
+    // Caso de teste 3: Campos obrigatórios faltando
+    Reservation missingFieldsRes;
+    missingFieldsRes.price = 100.0;
+    validator.process(missingFieldsRes);
+    std::cout << "Missing fields - Status: " << missingFieldsRes.status 
+              << " (should be unchanged, handler returns early)" << std::endl;
+}
+
+// Função para testar DateHandler
+void testDateHandler() {
+    std::cout << "\nTesting DateHandler" << std::endl;
+    
+    DateHandler dateProcessor;
+    
+    // Caso de teste 1: Data completa
+    Reservation fullDateRes;
+    fullDateRes.reservation_time = "2023-10-01T10:00:00";
+    dateProcessor.process(fullDateRes);
+    std::cout << "Full timestamp: " << fullDateRes.reservation_time 
+              << " (should be '2023-10-01')" << std::endl;
+    
+    // Caso de teste 2: Data curta
+    Reservation shortDateRes;
+    shortDateRes.reservation_time = "2023-10-01";
+    dateProcessor.process(shortDateRes);
+    std::cout << "Short date: " << shortDateRes.reservation_time 
+              << " (should remain unchanged)" << std::endl;
+    
+    // Caso de teste 3: String vazia
+    Reservation emptyDateRes;
+    emptyDateRes.reservation_time = "";
+    dateProcessor.process(emptyDateRes);
+    std::cout << "Empty date: " << emptyDateRes.reservation_time 
+              << " (should remain empty)" << std::endl;
+}
+
+// Função para testar RevenueHandler
+void testRevenueHandler() {
+    std::cout << "\nTesting RevenueHandler" << std::endl;
+    
+    RevenueHandler revenueCalculator;
+    
+    // Caso de teste 1: Reserva confirmada
+    Reservation confirmedRes;
+    confirmedRes.status = "confirmed";
+    confirmedRes.price = 100.0;
+    revenueCalculator.process(confirmedRes);
+    std::cout << "After confirmed reservation ($100): " 
+              << revenueCalculator.getTotalRevenue() 
+              << " (should be 100)" << std::endl;
+    
+    // Caso de teste 2: Reserva não confirmada
+    Reservation unconfirmedRes;
+    unconfirmedRes.status = "canceled";
+    unconfirmedRes.price = 50.0;
+    revenueCalculator.process(unconfirmedRes);
+    std::cout << "After unconfirmed reservation ($50): " 
+              << revenueCalculator.getTotalRevenue() 
+              << " (should remain 100)" << std::endl;
+    
+    // Caso de teste 3: Reset
+    revenueCalculator.resetRevenue();
+    std::cout << "After reset: " << revenueCalculator.getTotalRevenue() 
+              << " (should be 0)" << std::endl;
+    
+    // Caso de teste 4: Múltiplas threads
+    std::vector<std::thread> threads;
+    for (int i = 0; i < 10; ++i) {
+        threads.emplace_back([&revenueCalculator]() {
+            Reservation res;
+            res.status = "confirmed";
+            res.price = 10.0;
+            revenueCalculator.process(res);
+        });
+    }
+    
+    for (auto& t : threads) {
+        t.join();
+    }
+    
+    std::cout << "After 10 thread-safe additions ($10 each): " 
+              << revenueCalculator.getTotalRevenue() 
+              << " (should be 100)" << std::endl;
+}
+
 class Pipeline {
 public:
     Pipeline() : threadWorld(12) {} // Start with 4 threads
@@ -109,11 +222,11 @@ public:
             Extractor extractor;
             DataFrame<std::string> df = extractor.extractFromJson("../generator/orders.json");
 
-            // Verify we have the amount column
+            // Verify we have the price column
             try {
-                auto& amountCol = df["amount"];
+                auto& priceCol = df["price"];
             } catch (const std::invalid_argument&) {
-                std::cerr << "Error: Input data is missing the 'amount' column" << std::endl;
+                std::cerr << "Error: Input data is missing the 'price' column" << std::endl;
                 return;
             }
 
@@ -139,11 +252,11 @@ public:
                 res.reservation_time = df["reservation_time"][i];
                 
                 try {
-                    res.amount = std::stod(df["amount"][i]);
+                    res.price = std::stod(df["price"][i]);
                 } catch (...) {
-                    std::cerr << "Warning: Invalid amount format for reservation " << i 
+                    std::cerr << "Warning: Invalid price format for reservation " << i 
                               << ", defaulting to 0.0" << std::endl;
-                    res.amount = 0.0;
+                    res.price = 0.0;
                 }
                 
                 threadWorld.addDataToBuffer(0, res);
@@ -176,6 +289,11 @@ int main() {
         // Run tests
         testSeries();
         testDataFrameWithRealData();
+        
+        // New handler tests
+        testValidationHandler();
+        testDateHandler();
+        testRevenueHandler();
         
         // Run pipeline
         Pipeline pipeline;
