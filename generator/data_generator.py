@@ -18,6 +18,7 @@ def generate_flight_orders(n):
         status = random.choice(["pending", "confirmed", "cancelled"])
         payment_method = random.choice(["credit_card", "debit_card", "paypal"])
         reservation_time = faker.date_time_between(start_date = "-60d", end_date = "now").isoformat()
+        price = round(random.uniform(200.0, 2000.0), 2)
 
         order = {
             "flight_id": flight_id,
@@ -26,7 +27,8 @@ def generate_flight_orders(n):
             "customer_name": customer_name,
             "status": status,
             "payment_method": payment_method,
-            "reservation_time": reservation_time
+            "reservation_time": reservation_time,
+            "price": price
         }
 
         orders.append(order)

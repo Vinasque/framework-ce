@@ -27,24 +27,27 @@ public:
             }
 
             std::vector<std::string> flightIds, seats, userIds, customerNames;
-            std::vector<std::string> statuses, paymentMethods, reservationTimes, amounts;
+            std::vector<std::string> statuses, paymentMethods, reservationTimes, prices;
 
             for (const auto& record : jsonData) {
-                flightIds.push_back(record["flight_id"]);
-                seats.push_back(record["seat"]);
-                userIds.push_back(record["user_id"]);
-                customerNames.push_back(record["customer_name"]);
-                statuses.push_back(record["status"]);
-                paymentMethods.push_back(record["payment_method"]);
-                reservationTimes.push_back(record["reservation_time"]);
-                
-                // Handle amount field - provide default if missing
-                amounts.push_back(record.value("amount", "0.0")); // Default to 0.0 if amount is missing
+                flightIds.push_back(record["flight_id"].get<std::string>());
+                seats.push_back(record["seat"].get<std::string>());
+                userIds.push_back(record["user_id"].get<std::string>());
+                customerNames.push_back(record["customer_name"].get<std::string>());
+                statuses.push_back(record["status"].get<std::string>());
+                paymentMethods.push_back(record["payment_method"].get<std::string>());
+                reservationTimes.push_back(record["reservation_time"].get<std::string>());
+
+                if (record.contains("price")) {
+                    prices.push_back(std::to_string(record["price"].get<double>()));
+                } else {
+                    prices.push_back("0.0");
+                }
             }
 
             std::vector<std::string> columns = {
                 "flight_id", "seat", "user_id", "customer_name", 
-                "status", "payment_method", "reservation_time", "amount"
+                "status", "payment_method", "reservation_time", "price"
             };
 
             std::vector<Series<std::string>> series = {
@@ -55,7 +58,7 @@ public:
                 Series<std::string>(statuses),
                 Series<std::string>(paymentMethods),
                 Series<std::string>(reservationTimes),
-                Series<std::string>(amounts)
+                Series<std::string>(prices)
             };
 
             return DataFrame<std::string>(columns, series);
