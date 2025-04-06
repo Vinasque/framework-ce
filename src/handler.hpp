@@ -6,6 +6,11 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <string>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
+#include <cmath>
 
 struct Reservation {
     std::string flight_id;
@@ -40,27 +45,77 @@ public:
     }
     
     virtual ~BaseHandler() {}
+
+    void run() {
+        while (running) {
+            std::unique_lock<std::mutex> lock(inputMutex);
+            cv.wait(lock, [this] { return !inputQueue.empty() || !running; });
+            
+            if (!running) break;
+            
+            Reservation res = inputQueue.front();
+            inputQueue.pop();
+            lock.unlock();
+            
+            process(res);
+        }
+    }
 };
 
 class ValidationHandler : public BaseHandler {
 public:
     void process(Reservation& res) override {
-        // Validate reservation
-        // Remove invalid reservations
+        if (res.flight_id.empty() || 
+            res.seat.empty() || 
+            res.user_id.empty() || 
+            res.customer_name.empty() ||
+            res.payment_method.empty()) {
+            return;
+        }
+        
+        if (res.amount <= 0) {
+            res.status = "invalid_amount";
+        }
+        
     }
 };
 
 class DateHandler : public BaseHandler {
+private:
+    std::string extractDate(const std::string& datetime) {
+        if (datetime.length() >= 10) {
+            return datetime.substr(0, 10);
+        }
+        return datetime;
+    }
+
 public:
     void process(Reservation& res) override {
-        // Adjust dates to consider only days
+        res.reservation_time = extractDate(res.reservation_time);
     }
 };
 
 class RevenueHandler : public BaseHandler {
+private:
+    double totalRevenue = 0.0;
+    mutable std::mutex revenueMutex;
+
 public:
     void process(Reservation& res) override {
-        // Calculate aggregated revenue per day
+        if (res.status == "confirmed") { 
+            std::lock_guard<std::mutex> lock(revenueMutex);
+            totalRevenue += res.amount;
+        }
+    }
+
+    double getTotalRevenue() const {
+        std::lock_guard<std::mutex> lock(revenueMutex);
+        return totalRevenue;
+    }
+
+    void resetRevenue() {
+        std::lock_guard<std::mutex> lock(revenueMutex);
+        totalRevenue = 0.0;
     }
 };
 
