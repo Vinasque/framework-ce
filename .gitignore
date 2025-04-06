@@ -2,6 +2,5 @@
 .vscode/
 
 # Ignora arquivos gerados na pasta src
-src/*.db
 src/*.o
 src/*.exe
