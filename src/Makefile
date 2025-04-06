@@ -1,36 +1,20 @@
-# Arquivos permanentes (C - SQLite)
-C_SOURCES = ../src/sqlite3.c
-C_OBJECTS = $(C_SOURCES:.c=.o)
-
-# Arquivos C++ (adicione/remova aqui)
-CPP_SOURCES = \
-    ../src/gustavo_teste.cpp \
-    # ../src/outro_arquivo.cpp \
-
-CPP_OBJECTS = $(CPP_SOURCES:.cpp=.o)
-
-# Nome do executável final
+SQLITE_DIR = ../libs/sqlite3
 TARGET = main.exe
 
+# Lista dos seus arquivos C++ (adicione/remova aqui)
+CPP_SOURCES = gustavo_teste.cpp
+
 # Regra principal
-all: $(TARGET)
-
-# Compilação do SQLite (C)
-%.o: %.c        # Esse Wno é uma mensagem de aviso que o código dá
-	gcc -Wall -Wno-unused-but-set-variable -c $< -o $@
-
-# Compilação dos arquivos C++
-%.o: %.cpp
-	g++ -Wall -c $< -o $@
-
-# Linkagem final
-$(TARGET): $(C_OBJECTS) $(CPP_OBJECTS)
-	g++ -o $@ $^ -L/c/msys64/mingw64/lib -lsqlite3
+all:
+	gcc -Wall -Wno-unused-but-set-variable -I$(SQLITE_DIR) -c $(SQLITE_DIR)/sqlite3.c
+	g++ -Wall -I$(SQLITE_DIR) $(CPP_SOURCES) sqlite3.o -o $(TARGET)
 
 # Limpeza
 clean:
-	rm -f $(C_OBJECTS) $(CPP_OBJECTS) $(TARGET) 
+	rm -f $(TARGET) sqlite3.o *.db 2>/dev/null || del $(TARGET) sqlite3.o *.db 2>nul
 
 # Execução
-run: $(TARGET)
-	./$(TARGET)
+run:
+	./$(TARGET) || .\$(TARGET)
+
+.PHONY: all clean run
