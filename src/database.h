@@ -11,12 +11,12 @@
 
 class DataBase {
 public:
-    sqlite3* db;      // Ponteiro para o banco de dados
-    int rc;           // Mensagem de status do SQLite
-    char* errMsg;     // Mensagem de erro, caso ocorra
-    std::string sql;  // Query
+    sqlite3* db;      // ponteiro para o banco de dados
+    int rc;           // mensagem de status do SQLite
+    char* errMsg;     // mensagem de erro, caso ocorra
+    std::string sql;  // query
 
-    // Construtor: abre o banco de dados
+    // abre o banco de dados
     DataBase(const std::string& db_name) {
         rc = sqlite3_open(db_name.c_str(), &db);
         if (rc) {
@@ -27,7 +27,6 @@ public:
 
     }
 
-    // O destruidor é chamado automaticamnete assim que o objeto DataBase sair do escopo
     ~DataBase() {
         if (db) {
             sqlite3_close(db); // Fecha a conexão com o modelo
@@ -35,22 +34,14 @@ public:
         }
     }
 
-    /*
-        ==================================================================================================================
-        ao invés de deixar os métodos de CREATE e INSERT genéricos, por agora eu criei específicos pro nosso caso, que estão abaxio
-        ==================================================================================================================
-    */
-
-    // TODO: implementar com diferentes colunas
+    // criar tabela
     void createTable(const std::string& table_name, const std::string& schema)
     {
-        // Cria uma tabela
         sql = "CREATE TABLE IF NOT EXISTS " + table_name + " " + schema + ";";
-        // O schema é do tipo: (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)
+        // (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)
         errMsg = nullptr;
         rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &errMsg);
-        
-        // Teste se criou corretamente
+
         if (rc != SQLITE_OK) {   
             std::cout << "Erro ao criar tabela: " << errMsg << std::endl;
             sqlite3_free(errMsg); }
@@ -59,15 +50,13 @@ public:
         }
     }
 
-    // TODO: implementar com diferentes colunas
+    // inserir valores na tabela
     void insertValuesintoTable(const std::string& table_name, const std::string& date, const std::string& revenue)
-    {                                                                                   // como primeiro teste, usei str no revenue
-        // Insere valores na tabela
+    {                                                                                  
         sql = "INSERT INTO " + table_name + " (date, revenue) VALUES ('" + date + "', " + revenue + ");";
         errMsg = nullptr;
         rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &errMsg);
 
-        // Teste se inseriu corretamente
         if (rc != SQLITE_OK) {   
             std::cout << "Erro ao Inserir dados: " << errMsg << std::endl;
             sqlite3_free(errMsg); }
@@ -76,15 +65,9 @@ public:
         }
     }
 
-    /*
-        ===========================================================================================================================
-
-        ===========================================================================================================================
-    */
-
-    // Método para imprimir toda a  (usado pra teste)
+    // imprimir a tabela
     void printTable(const std::string& tableName) {
-        // Callback que será chamada para cada linha do resultado
+        // callback que será chamada para cada linha do resultado
         auto callback = [](void* data, int argc, char** argv, char** colNames) -> int {
             for(int i = 0; i < argc; i++) {
                 std::cout << colNames[i] << ": " << (argv[i] ? argv[i] : "NULL") << "\t";
