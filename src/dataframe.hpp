@@ -101,63 +101,62 @@ public:
     }
 
     
-// Função para filtrar as linhas de um DataFrame baseado em uma condição numérica
-DataFrame<T> filter(const std::string& columnName, const std::string& condition, T value) {
-    int column = column_id(columnName);
-    if (column == -1) {
-        throw std::invalid_argument("Column does not exist: " + columnName);
-    }
-
-    // Criar um DataFrame de resultado que irá conter apenas as linhas que atendem à condição
-    DataFrame<T> result;
-
-    // Criar uma série temporária para cada coluna
-    std::vector<Series<T>> tempSeries;  // Vetor para armazenar séries temporárias
-
-    // Inicializar as séries temporárias para cada coluna
-    for (const auto& columnName : columns) {
-        tempSeries.push_back(Series<T>());
-    }
-
-    // Filtrar as linhas com base na condição
-    for (int i = 0; i < shape.first; ++i) {
-        T columnValue = series[column][i];  // Valor da coluna para a linha i
-        bool conditionMet = false;
-
-        // Verificar a condição
-        if (condition == ">") {
-            conditionMet = columnValue > value;
-        } else if (condition == "<") {
-            conditionMet = columnValue < value;
-        } else if (condition == ">=") {
-            conditionMet = columnValue >= value;
-        } else if (condition == "<=") {
-            conditionMet = columnValue <= value;
-        } else if (condition == "==") {
-            conditionMet = columnValue == value;
-        } else if (condition == "!=") {
-            conditionMet = columnValue != value;
-        } else {
-            throw std::invalid_argument("Invalid condition: " + condition);
+    // Função para filtrar as linhas de um DataFrame baseado em uma condição numérica
+    DataFrame<T> filter(const std::string& columnName, const std::string& condition, T value) {
+        int column = column_id(columnName);
+        if (column == -1) {
+            throw std::invalid_argument("Column does not exist: " + columnName);
         }
 
-        // Se a condição for atendida, adicionar a linha ao DataFrame de resultado
-        if (conditionMet) {
-            for (int j = 0; j < shape.second; ++j) {
-                // Adicionar o valor da linha à série temporária correspondente à coluna
-                tempSeries[j].addElement(series[j][i]);
+        // Criar um DataFrame de resultado que irá conter apenas as linhas que atendem à condição
+        DataFrame<T> result;
+
+        // Criar uma série temporária para cada coluna
+        std::vector<Series<T>> tempSeries;  // Vetor para armazenar séries temporárias
+
+        // Inicializar as séries temporárias para cada coluna
+        for (const auto& columnName : columns) {
+            tempSeries.push_back(Series<T>());
+        }
+
+        // Filtrar as linhas com base na condição
+        for (int i = 0; i < shape.first; ++i) {
+            T columnValue = series[column][i];  // Valor da coluna para a linha i
+            bool conditionMet = false;
+
+            // Verificar a condição
+            if (condition == ">") {
+                conditionMet = columnValue > value;
+            } else if (condition == "<") {
+                conditionMet = columnValue < value;
+            } else if (condition == ">=") {
+                conditionMet = columnValue >= value;
+            } else if (condition == "<=") {
+                conditionMet = columnValue <= value;
+            } else if (condition == "==") {
+                conditionMet = columnValue == value;
+            } else if (condition == "!=") {
+                conditionMet = columnValue != value;
+            } else {
+                throw std::invalid_argument("Invalid condition: " + condition);
+            }
+
+            // Se a condição for atendida, adicionar a linha ao DataFrame de resultado
+            if (conditionMet) {
+                for (int j = 0; j < shape.second; ++j) {
+                    // Adicionar o valor da linha à série temporária correspondente à coluna
+                    tempSeries[j].addElement(series[j][i]);
+                }
             }
         }
+
+        // Adicionar as séries temporárias ao DataFrame de resultado
+        for (int j = 0; j < shape.second; ++j) {
+            result.addColumn(columns[j], tempSeries[j]);
+        }
+
+        return result;
     }
-
-    // Adicionar as séries temporárias ao DataFrame de resultado
-    for (int j = 0; j < shape.second; ++j) {
-        result.addColumn(columns[j], tempSeries[j]);
-    }
-
-    return result;
-}
-
 
 
     void deleteLastLine() {

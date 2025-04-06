@@ -5,6 +5,7 @@
 #include <fstream>
 #include <iostream>
 #include "dataframe.hpp"
+#include <sqlite3.h>
 
 class Extractor {
 public:
@@ -64,6 +65,107 @@ public:
             return DataFrame<std::string>(columns, series);
         } catch (const std::exception& e) {
             std::cerr << "Extraction error: " << e.what() << std::endl;
+            throw;
+        }
+    }
+
+    // Método para extrair dados de um arquivo CSV
+    DataFrame<std::string> extractFromCsv(const std::string& filePath) {
+        try {
+            std::ifstream file(filePath);
+            if (!file.is_open()) {
+                throw std::runtime_error("Could not open the file: " + filePath);
+            }
+
+            std::string line;
+            std::vector<std::string> columns;
+            std::vector<std::vector<std::string>> data;
+
+            // Read columns (first line)
+            std::getline(file, line);
+            std::stringstream ss(line);
+            std::string column;
+            while (std::getline(ss, column, ',')) {
+                columns.push_back(column);
+            }
+
+            // Read rows
+            while (std::getline(file, line)) {
+                std::stringstream rowStream(line);
+                std::vector<std::string> row;
+                while (std::getline(rowStream, column, ',')) {
+                    row.push_back(column);
+                }
+                data.push_back(row);
+            }
+
+            // Prepare DataFrame
+            std::vector<Series<std::string>> series;
+            for (size_t i = 0; i < columns.size(); ++i) {
+                std::vector<std::string> columnData;
+                for (const auto& row : data) {
+                    columnData.push_back(row[i]);
+                }
+                series.push_back(Series<std::string>(columnData));
+            }
+
+            return DataFrame<std::string>(columns, series);
+        } catch (const std::exception& e) {
+            std::cerr << "CSV extraction error: " << e.what() << std::endl;
+            throw;
+        }
+    }
+
+    // Método para extrair dados de um banco de dados SQLite
+    DataFrame<std::string> extractFromSqlite(const std::string& dbPath, const std::string& query) {
+        try {
+            sqlite3* db;
+            int rc = sqlite3_open(dbPath.c_str(), &db);
+
+            if (rc) {
+                throw std::runtime_error("Cannot open database: " + std::string(sqlite3_errmsg(db)));
+            }
+
+            sqlite3_stmt* stmt;
+            rc = sqlite3_prepare_v2(db, query.c_str(), -1, &stmt, 0);
+            if (rc != SQLITE_OK) {
+                throw std::runtime_error("Failed to execute query: " + std::string(sqlite3_errmsg(db)));
+            }
+
+            std::vector<std::string> columns;
+            std::vector<std::vector<std::string>> data;
+
+            // Get column names
+            int columnCount = sqlite3_column_count(stmt);
+            for (int i = 0; i < columnCount; ++i) {
+                columns.push_back(sqlite3_column_name(stmt, i));
+            }
+
+            // Get rows of data
+            while (sqlite3_step(stmt) == SQLITE_ROW) {
+                std::vector<std::string> row;
+                for (int i = 0; i < columnCount; ++i) {
+                    row.push_back(reinterpret_cast<const char*>(sqlite3_column_text(stmt, i)));
+                }
+                data.push_back(row);
+            }
+
+            sqlite3_finalize(stmt);
+            sqlite3_close(db);
+
+            // Prepare DataFrame
+            std::vector<Series<std::string>> series;
+            for (size_t i = 0; i < columns.size(); ++i) {
+                std::vector<std::string> columnData;
+                for (const auto& row : data) {
+                    columnData.push_back(row[i]);
+                }
+                series.push_back(Series<std::string>(columnData));
+            }
+
+            return DataFrame<std::string>(columns, series);
+        } catch (const std::exception& e) {
+            std::cerr << "SQLite extraction error: " << e.what() << std::endl;
             throw;
         }
     }
