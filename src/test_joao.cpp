@@ -30,11 +30,10 @@ void testSeries() {
 }
 
 // Função de teste para a classe DataFrame
-// Função de teste para a classe DataFrame
 void testDataFrame() {
     std::cout << "\nTestando DataFrame" << std::endl;
 
-    // Criando Series de exemplo
+    // Criando Series
     Series<int> s1({1, 2, 3, 4});
     Series<int> s2({5, 6, 7, 8});
     Series<int> s3({9, 10, 11, 12});
@@ -42,7 +41,6 @@ void testDataFrame() {
     // Criando DataFrame com as Series
     DataFrame<int> df({"A", "B", "C"}, {s1, s2, s3});
 
-    // Imprimindo DataFrame
     std::cout << "DataFrame original:" << std::endl;
     df.print();
 
@@ -54,11 +52,9 @@ void testDataFrame() {
 
     std::cout << "\nLOL" << std::endl;
 
-    // Somando a coluna A
     int sumA = df.sum("A");
     std::cout << "\nSoma da coluna A: " << sumA << std::endl; //Esperado: 10
 
-    // Calculando a média da coluna B
     int meanB = df.mean("B");
     std::cout << "Média da coluna B: " << meanB << std::endl; //Esperado: 6
 
@@ -80,11 +76,11 @@ void testDataFrame() {
 
     // Testando a função deleteLastLine
     std::cout << "\nTestando deleteLastLine" << std::endl;
-    df.deleteLastLine();  // Remover a última linha
+    df.deleteLastLine(); 
     std::cout << "DataFrame após remover a última linha:" << std::endl;
     df.print();
 
-    // Filtrando DataFrame: Mantendo apenas as linhas onde A > 2
+    // Filtrando DataFrame: Mantendo apenas as linhas onde B > 5
     DataFrame<int> filteredDF = df.filter("B", ">", 5);
     std::cout << "\nDataFrame após filtro (B > 5):" << std::endl;
     filteredDF.print();
