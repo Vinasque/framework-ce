@@ -4,7 +4,6 @@
 #include "dataframe.hpp"
 #include "database.h"
 
-
 class Loader {
 private:
     DataBase& database;
@@ -12,30 +11,36 @@ private:
 public:
     Loader(DataBase& db) : database(db) {}
 
-    // Função genérica para carregar dados para qualquer tabela
-    void loadData(const std::string& table_name, const DataFrame<std::string>& df, const std::vector<std::string>& columns) {
-        // Obtém as colunas e valores do DataFrame
-        const auto& dfColumns = df.getColumns();
-
-        std::cout << dfColumns[0] << std::endl;
-        
-        // Insere cada linha no banco
+    void loadData(const std::string& table_name, const DataFrame<std::string>& df, 
+                    const std::vector<std::string>& columns) {
+        // For each row in the DataFrame
         for (int i = 0; i < df.numRows(); ++i) {
             std::vector<std::string> values;
-
-            // Para cada coluna que será inserida, pega os valores do DataFrame
             for (const auto& column : columns) {
                 values.push_back(df.getValue(column, i));
             }
 
-            // Chama a função de inserção passando as colunas e os valores
-            database.insertValuesintoTable(table_name, columns, values);
-        }
+            // Build the upsert query
+            std::string sql;
+            if (table_name == "faturamento") {
+                sql = "INSERT INTO " + table_name + " (reservation_time, price) " +
+                        "VALUES ('" + values[0] + "', " + values[1] + ") " +
+                        "ON CONFLICT(reservation_time) DO UPDATE SET " +
+                        "price = price + excluded.price;";
+            } 
+            else if (table_name == "faturamentoMetodo") {
+                sql = "INSERT INTO " + table_name + " (payment_method, price) " +
+                        "VALUES ('" + values[0] + "', " + values[1] + ") " +
+                        "ON CONFLICT(payment_method) DO UPDATE SET " +
+                        "price = price + excluded.price;";
+            }
 
-        std::cout << "Dados carregados com sucesso na tabela '" << table_name << "'!" << std::endl;
+            // Execute the query
+            database.executeSQL(sql);
+        }
     }
 };
-    
+
 // class Loader {
 // public:
 

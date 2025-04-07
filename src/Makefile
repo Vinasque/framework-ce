@@ -1,8 +1,8 @@
 SQLITE_DIR = ../libs/sqlite3
-TARGET = main.exe
+TARGET = teste.exe
 
 # Lista dos seus arquivos C++ (adicione/remova aqui)
-CPP_SOURCES = gustavo_teste.cpp 
+CPP_SOURCES = test.cpp 
 
 # Regra principal
 all:

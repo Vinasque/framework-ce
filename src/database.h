@@ -118,6 +118,15 @@ public:
         }
     }
 
+    void executeSQL(const std::string& sql) {
+        char* errMsg = nullptr;
+        int rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &errMsg);
+        if (rc != SQLITE_OK) {
+            std::cerr << "SQL error: " << errMsg << std::endl;
+            sqlite3_free(errMsg);
+        }
+    }
+    
 };
 
 #endif // DATABASE_H

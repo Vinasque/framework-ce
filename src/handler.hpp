@@ -91,47 +91,22 @@ public:
 
 // Handler de cálculo de receita com groupby por data
 class RevenueHandler : public BaseHandler {
-private:
-    double totalRevenue = 0.0;
-    mutable std::mutex revenueMutex;
-
 public:
     DataFrame<std::string> process(DataFrame<std::string>& df) override {
-        // Agrupar pela coluna "reservation_time" (data) e somar os valores da coluna "price"
-        DataFrame<std::string> groupedDf = df.groupby("reservation_time", "price");
-
-        // Calcular a receita total, somando os valores da coluna "price" para o status "confirmed"
-        for (int i = 0; i < df.numRows(); ++i) {
-            std::string status = df.getValue("status", i);
-            if (status == "confirmed") {
-                totalRevenue += std::stod(df.getValue("price", i));
-            }
-        }
-
-        return groupedDf;  // Retorna o DataFrame agrupado
-    }
-
-    double getTotalRevenue() const {
-        std::lock_guard<std::mutex> lock(revenueMutex);
-        return totalRevenue;
-    }
-
-    void resetRevenue() {
-        std::lock_guard<std::mutex> lock(revenueMutex);
-        totalRevenue = 0.0;
+        // First filter only confirmed reservations
+        DataFrame<std::string> confirmed = df.filter("status", "==", std::string("confirmed"));
+        // Then group by date and sum prices
+        return confirmed.groupby("reservation_time", "price");
     }
 };
 
-// Handler de cálculo de receita com groupby por data
 class CardRevenueHandler : public BaseHandler {
-private:
-    mutable std::mutex revenueMutex;
-
 public:
     DataFrame<std::string> process(DataFrame<std::string>& df) override {
-        // Agrupar pela coluna "reservation_time" (data) e somar os valores da coluna "price"
-        DataFrame<std::string> groupedDf = df.groupby("payment_method", "price");
-        return groupedDf;  // Retorna o DataFrame agrupado
+        // First filter only confirmed reservations
+        DataFrame<std::string> confirmed = df.filter("status", "==", std::string("confirmed"));
+        // Then group by payment method and sum prices
+        return confirmed.groupby("payment_method", "price");
     }
 };
 #endif // HANDLER_HPP
