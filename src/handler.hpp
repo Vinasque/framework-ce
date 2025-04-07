@@ -11,53 +11,40 @@
 #include <iomanip>
 #include <sstream>
 #include <cmath>
+#include "dataframe.hpp"  // Agora estamos usando DataFrame
 
-struct Reservation {
-    std::string flight_id;
-    std::string seat;
-    std::string user_id;
-    std::string customer_name;
-    std::string status;
-    std::string payment_method;
-    std::string reservation_time;
-    double price;
-};
-
+// BaseHandler agora lida com DataFrame
 class BaseHandler {
 protected:
-    std::queue<Reservation> inputQueue;
+    std::queue<DataFrame<std::string>> inputQueue;  // Fila de DataFrame
     std::mutex inputMutex;
     std::condition_variable cv;
     bool running = true;
-    
+
 public:
-    virtual void process(Reservation& res) = 0;
-    
-    void addReservation(const Reservation& res) {
-        std::lock_guard<std::mutex> lock(inputMutex);
-        inputQueue.push(res);
-        cv.notify_one();
-    }
-    
+    // Modificado para aceitar e retornar um DataFrame
+    virtual DataFrame<std::string> process(DataFrame<std::string>& df) = 0;  
+
     void stop() {
         running = false;
         cv.notify_all();
     }
-    
+
     virtual ~BaseHandler() {}
 
+    // Função para rodar a execução dos handlers
     void run() {
         while (running) {
             std::unique_lock<std::mutex> lock(inputMutex);
             cv.wait(lock, [this] { return !inputQueue.empty() || !running; });
-            
+
             if (!running) break;
-            
-            Reservation res = inputQueue.front();
+
+            DataFrame<std::string> df = inputQueue.front();
             inputQueue.pop();
             lock.unlock();
-            
-            process(res);
+
+            process(df);  // Processo do DataFrame
         }
     }
 
@@ -66,73 +53,72 @@ public:
         return running;
     }
 
-    // remover item da fila
-    bool tryPop(Reservation& res) {
-        std::unique_lock<std::mutex> lock(inputMutex);
-        if (inputQueue.empty()) return false;
-        res = inputQueue.front();
-        inputQueue.pop();
-        return true;
+    // inserir na fila
+    void addDataFrame(DataFrame<std::string>& df) {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        inputQueue.push(df);
+        cv.notify_one();
     }
 };
 
+// Handler de validação (exemplo de process)
 class ValidationHandler : public BaseHandler {
-public:
-    void process(Reservation& res) override {
-        if (res.flight_id.empty() || 
-            res.seat.empty() || 
-            res.user_id.empty() || 
-            res.customer_name.empty() ||
-            res.payment_method.empty()) {
-            return;
+    public:
+        DataFrame<std::string> process(DataFrame<std::string>& df) override {
+            // Aqui, você pode processar o df como necessário. Por exemplo:
+            for (int i = 0; i < df.numRows(); ++i) {
+                if (df.getValue("flight_id", i).empty()) {
+                    df.deleteLine(i);  // Deleta a linha se flight_id for vazio
+                }
+            }
+            return df;  // Retorna o DataFrame modificado
         }
-        
-        if (res.price <= 0) {
-            res.status = "invalid_price";
-        }
-        
-    }
-};
-
+    };
+    
 class DateHandler : public BaseHandler {
-private:
-    std::string extractDate(const std::string& datetime) {
-        if (datetime.length() >= 10) {
-            return datetime.substr(0, 10);
-        }
-        return datetime;
-    }
-
 public:
-    void process(Reservation& res) override {
-        res.reservation_time = extractDate(res.reservation_time);
+    DataFrame<std::string> process(DataFrame<std::string>& df) override {
+        for (int i = 0; i < df.numRows(); ++i) {
+            std::string datetime = df.getValue("reservation_time", i);
+            if (datetime.length() >= 10) {
+                std::string formattedDate = datetime.substr(0, 10);  // Formata a data
+                df.updateValue("reservation_time", i, formattedDate);  // Atualiza a célula no DataFrame
+            }
+        }
+        return df;  // Retorna o DataFrame modificado
     }
 };
 
+// Handler de cálculo de receita com groupby por data
 class RevenueHandler : public BaseHandler {
 private:
     double totalRevenue = 0.0;
     mutable std::mutex revenueMutex;
 
 public:
-    void process(Reservation& res) override {
-        if (res.status == "confirmed") { 
-            std::lock_guard<std::mutex> lock(revenueMutex);
-            totalRevenue += res.price;
+    DataFrame<std::string> process(DataFrame<std::string>& df) override {
+        // Agrupar pela coluna "reservation_time" (data) e somar os valores da coluna "price"
+        DataFrame<std::string> groupedDf = df.groupby("reservation_time", "price");
+
+        // Calcular a receita total, somando os valores da coluna "price" para o status "confirmed"
+        for (int i = 0; i < df.numRows(); ++i) {
+            std::string status = df.getValue("status", i);
+            if (status == "confirmed") {
+                totalRevenue += std::stod(df.getValue("price", i));
+            }
         }
+
+        return groupedDf;  // Retorna o DataFrame agrupado
     }
 
-    // retorna a receita
     double getTotalRevenue() const {
         std::lock_guard<std::mutex> lock(revenueMutex);
         return totalRevenue;
     }
 
-    // reseta a receita
     void resetRevenue() {
         std::lock_guard<std::mutex> lock(revenueMutex);
         totalRevenue = 0.0;
     }
 };
-
 #endif // HANDLER_HPP

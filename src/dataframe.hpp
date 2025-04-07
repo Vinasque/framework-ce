@@ -84,6 +84,20 @@ public:
         shape.first--;
     }
 
+    void updateValue(const std::string& columnName, int row, const T& newValue) {
+        int colIdx = column_id(columnName);  // Obtém o índice da coluna
+        if (colIdx == -1) {
+            throw std::invalid_argument("Column does not exist: " + columnName);  // Verifica se a coluna existe
+        }
+
+        if (row < 0 || row >= shape.first) {
+            throw std::out_of_range("Row index out of range.");  // Verifica se o índice da linha está no intervalo
+        }
+
+        // Atualiza o valor da célula na coluna e linha especificada
+        series[colIdx].updateElementAt(row, newValue);
+    }
+
     int numRows() const {
         return shape.first;
     }
@@ -101,61 +115,102 @@ public:
     }
 
     
-// Função para filtrar as linhas de um DataFrame baseado em uma condição numérica
-DataFrame<T> filter(const std::string& columnName, const std::string& condition, T value) {
-    int column = column_id(columnName);
-    if (column == -1) {
-        throw std::invalid_argument("Column does not exist: " + columnName);
-    }
-
-    // Criar um DataFrame de resultado que irá conter apenas as linhas que atendem à condição
-    DataFrame<T> result;
-
-    // Criar uma série temporária para cada coluna
-    std::vector<Series<T>> tempSeries;  // Vetor para armazenar séries temporárias
-
-    // Inicializar as séries temporárias para cada coluna
-    for (const auto& columnName : columns) {
-        tempSeries.push_back(Series<T>());
-    }
-
-    // Filtrar as linhas com base na condição
-    for (int i = 0; i < shape.first; ++i) {
-        T columnValue = series[column][i];  // Valor da coluna para a linha i
-        bool conditionMet = false;
-
-        // Verificar a condição
-        if (condition == ">") {
-            conditionMet = columnValue > value;
-        } else if (condition == "<") {
-            conditionMet = columnValue < value;
-        } else if (condition == ">=") {
-            conditionMet = columnValue >= value;
-        } else if (condition == "<=") {
-            conditionMet = columnValue <= value;
-        } else if (condition == "==") {
-            conditionMet = columnValue == value;
-        } else if (condition == "!=") {
-            conditionMet = columnValue != value;
-        } else {
-            throw std::invalid_argument("Invalid condition: " + condition);
+    // Função para filtrar as linhas de um DataFrame baseado em uma condição numérica
+    DataFrame<T> filter(const std::string& columnName, const std::string& condition, T value) {
+        int column = column_id(columnName);
+        if (column == -1) {
+            throw std::invalid_argument("Column does not exist: " + columnName);
         }
 
-        // Se a condição for atendida, adicionar a linha ao DataFrame de resultado
-        if (conditionMet) {
-            for (int j = 0; j < shape.second; ++j) {
-                // Adicionar o valor da linha à série temporária correspondente à coluna
-                tempSeries[j].addElement(series[j][i]);
+        // Criar um DataFrame de resultado que irá conter apenas as linhas que atendem à condição
+        DataFrame<T> result;
+
+        // Criar uma série temporária para cada coluna
+        std::vector<Series<T>> tempSeries;  // Vetor para armazenar séries temporárias
+
+        // Inicializar as séries temporárias para cada coluna
+        for (const auto& columnName : columns) {
+            tempSeries.push_back(Series<T>());
+        }
+
+        // Filtrar as linhas com base na condição
+        for (int i = 0; i < shape.first; ++i) {
+            T columnValue = series[column][i];  // Valor da coluna para a linha i
+            bool conditionMet = false;
+
+            // Verificar a condição
+            if (condition == ">") {
+                conditionMet = columnValue > value;
+            } else if (condition == "<") {
+                conditionMet = columnValue < value;
+            } else if (condition == ">=") {
+                conditionMet = columnValue >= value;
+            } else if (condition == "<=") {
+                conditionMet = columnValue <= value;
+            } else if (condition == "==") {
+                conditionMet = columnValue == value;
+            } else if (condition == "!=") {
+                conditionMet = columnValue != value;
+            } else {
+                throw std::invalid_argument("Invalid condition: " + condition);
+            }
+
+            // Se a condição for atendida, adicionar a linha ao DataFrame de resultado
+            if (conditionMet) {
+                for (int j = 0; j < shape.second; ++j) {
+                    // Adicionar o valor da linha à série temporária correspondente à coluna
+                    tempSeries[j].addElement(series[j][i]);
+                }
             }
         }
-    }
 
-    // Adicionar as séries temporárias ao DataFrame de resultado
-    for (int j = 0; j < shape.second; ++j) {
-        result.addColumn(columns[j], tempSeries[j]);
-    }
+        // Adicionar as séries temporárias ao DataFrame de resultado
+        for (int j = 0; j < shape.second; ++j) {
+            result.addColumn(columns[j], tempSeries[j]);
+        }
 
         return result;
+    }
+
+    DataFrame<std::string> groupby(const std::string& groupByColumn, const std::string& sumColumn) {
+        // Verificar se as colunas existem no DataFrame
+        int groupByColIdx = column_id(groupByColumn);
+        if (groupByColIdx == -1) {
+            throw std::invalid_argument("GroupBy column does not exist: " + groupByColumn);
+        }
+        
+        int sumColIdx = column_id(sumColumn);
+        if (sumColIdx == -1) {
+            throw std::invalid_argument("Sum column does not exist: " + sumColumn);
+        }
+
+        // Utilizar um mapa para agrupar e somar os valores
+        std::map<std::string, double> groupedData;
+
+        // Iterar sobre as linhas do DataFrame
+        for (int i = 0; i < numRows(); ++i) {
+            std::string groupByValue = getValue(groupByColumn, i);  // Obtém o valor da coluna de agrupamento
+            double sumValue = std::stod(getValue(sumColumn, i));   // Obtém o valor da coluna de soma
+
+            // Somar o valor no grupo correspondente
+            groupedData[groupByValue] += sumValue;
+        }
+
+        // Preparar o DataFrame de resultado
+        std::vector<std::string> columns = {groupByColumn, sumColumn};
+        std::vector<Series<std::string>> series = {
+            Series<std::string>(),  // Coluna de dias
+            Series<std::string>()   // Coluna de soma de preços
+        };
+
+        // Preencher as séries com os resultados agrupados
+        for (const auto& pair : groupedData) {
+            series[0].addElement(pair.first);           // Adiciona o dia
+            series[1].addElement(std::to_string(pair.second)); // Adiciona a soma de preços
+        }
+
+        // Retorna o DataFrame com o resultado do groupby
+        return DataFrame<std::string>(columns, series);
     }
 
 

@@ -36,7 +36,15 @@ public:
             throw std::out_of_range("Index out of range.");
         }
         data_.erase(data_.begin() + index);
-    }    
+    }
+
+    void updateElementAt(int index, const T& newValue) {
+        if (index < 0 || index >= data_.size()) {
+            throw std::out_of_range("Index out of range.");
+        }
+
+        data_[index] = newValue;  // Atualiza o valor na posição especificada
+    }
 
     // adicionar todos os elementos de outra série
     Series<T> appendSeries(const Series<T>& other) const {
