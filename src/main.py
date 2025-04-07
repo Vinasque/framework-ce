@@ -7,7 +7,7 @@ def read_data_from_sqlite(db_path):
     cursor = conn.cursor()
 
     # Executar a query para pegar os dados da tabela
-    cursor.execute("SELECT date, revenue FROM faturamento")
+    cursor.execute("SELECT payment_method, price FROM faturamentoMetodo")
     rows = cursor.fetchall()
 
     # Separar os dados em duas listas: datas e receitas

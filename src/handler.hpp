@@ -121,4 +121,17 @@ public:
         totalRevenue = 0.0;
     }
 };
+
+// Handler de cálculo de receita com groupby por data
+class CardRevenueHandler : public BaseHandler {
+private:
+    mutable std::mutex revenueMutex;
+
+public:
+    DataFrame<std::string> process(DataFrame<std::string>& df) override {
+        // Agrupar pela coluna "reservation_time" (data) e somar os valores da coluna "price"
+        DataFrame<std::string> groupedDf = df.groupby("payment_method", "price");
+        return groupedDf;  // Retorna o DataFrame agrupado
+    }
+};
 #endif // HANDLER_HPP
