@@ -4,31 +4,37 @@
 #include "dataframe.hpp"
 #include "database.h"
 
-class Loader {
-    private:
-        DataBase& database;
-    
-    public:
-        Loader(DataBase& db) : database(db) {}
-    
-        // carregar dados financeiros (data + valor)
-        void loadData(const std::string& table_name, const DataFrame<std::string>& df) {
-    
-            const auto& cols = df.getColumns();
-            const std::string& date_col = cols[0];
-            const std::string& value_col = cols[1];
-    
-            // insere cada linha no banco
-            for (int i = 0; i < df.numRows(); ++i) {
-                const std::string& date = df.getValue(date_col, i);
-                const std::string& value_str = df.getValue(value_col, i);
 
-                database.insertValuesintoTable(table_name, date, value_str);
+class Loader {
+private:
+    DataBase& database;
+
+public:
+    Loader(DataBase& db) : database(db) {}
+
+    // Função genérica para carregar dados para qualquer tabela
+    void loadData(const std::string& table_name, const DataFrame<std::string>& df, const std::vector<std::string>& columns) {
+        // Obtém as colunas e valores do DataFrame
+        const auto& dfColumns = df.getColumns();
+
+        std::cout << dfColumns[0] << std::endl;
+        
+        // Insere cada linha no banco
+        for (int i = 0; i < df.numRows(); ++i) {
+            std::vector<std::string> values;
+
+            // Para cada coluna que será inserida, pega os valores do DataFrame
+            for (const auto& column : columns) {
+                values.push_back(df.getValue(column, i));
             }
-    
-            std::cout << "Dados carregados com sucesso na tabela '" << table_name << "'!" << std::endl;
+
+            // Chama a função de inserção passando as colunas e os valores
+            database.insertValuesintoTable(table_name, columns, values);
         }
-    };
+
+        std::cout << "Dados carregados com sucesso na tabela '" << table_name << "'!" << std::endl;
+    }
+};
     
 // class Loader {
 // public:

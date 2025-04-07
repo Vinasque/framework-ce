@@ -50,17 +50,47 @@ public:
         }
     }
 
-    // inserir valores na tabela
-    void insertValuesintoTable(const std::string& table_name, const std::string& date, const std::string& revenue)
-    {                                                                                  
-        sql = "INSERT INTO " + table_name + " (date, revenue) VALUES ('" + date + "', " + revenue + ");";
+    // inserir valores na tabela, agora com colunas e valores passados como parâmetros
+    void insertValuesintoTable(const std::string& table_name, 
+                               const std::vector<std::string>& columns, 
+                               const std::vector<std::string>& values) 
+    {
+        // Verifica se o número de colunas é igual ao número de valores
+        if (columns.size() != values.size()) {
+            throw std::invalid_argument("Number of columns and values must match.");
+        }
+
+        // Monta a parte das colunas da query
+        std::string columnsStr = "(";
+        for (size_t i = 0; i < columns.size(); ++i) {
+            columnsStr += columns[i];
+            if (i < columns.size() - 1) {
+                columnsStr += ", ";
+            }
+        }
+        columnsStr += ")";
+
+        // Monta a parte dos valores da query
+        std::string valuesStr = "(";
+        for (size_t i = 0; i < values.size(); ++i) {
+            valuesStr += "'" + values[i] + "'";
+            if (i < values.size() - 1) {
+                valuesStr += ", ";
+            }
+        }
+        valuesStr += ")";
+
+        // Cria a query SQL
+        sql = "INSERT INTO " + table_name + " " + columnsStr + " VALUES " + valuesStr + ";";
+        
+        // Executa a query
         errMsg = nullptr;
         rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &errMsg);
 
         if (rc != SQLITE_OK) {   
             std::cout << "Erro ao Inserir dados: " << errMsg << std::endl;
-            sqlite3_free(errMsg); }
-        else {
+            sqlite3_free(errMsg); 
+        } else {
             std::cout << "Dados inseridos corretamente!" << std::endl;
         }
     }
