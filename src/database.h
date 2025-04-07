@@ -8,6 +8,7 @@
 #include <vector>   
 #include <cstring>
 #include "sqlite3.h"
+#include <mutex>
 
 class DataBase {
 public:
@@ -15,6 +16,7 @@ public:
     int rc;           // mensagem de status do SQLite
     char* errMsg;     // mensagem de erro, caso ocorra
     std::string sql;  // query
+    std::mutex dbMutex;
 
     // abre o banco de dados
     DataBase(const std::string& db_name) {
@@ -37,6 +39,7 @@ public:
     // criar tabela
     void createTable(const std::string& table_name, const std::string& schema)
     {
+        std::lock_guard<std::mutex> lock(dbMutex);
         sql = "CREATE TABLE IF NOT EXISTS " + table_name + " " + schema + ";";
         // (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)
         errMsg = nullptr;
@@ -55,6 +58,7 @@ public:
                                const std::vector<std::string>& columns, 
                                const std::vector<std::string>& values) 
     {
+        std::lock_guard<std::mutex> lock(dbMutex);
         // Verifica se o número de colunas é igual ao número de valores
         if (columns.size() != values.size()) {
             throw std::invalid_argument("Number of columns and values must match.");
@@ -87,16 +91,27 @@ public:
         errMsg = nullptr;
         rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &errMsg);
 
-        if (rc != SQLITE_OK) {   
-            std::cout << "Erro ao Inserir dados: " << errMsg << std::endl;
+        // DEBUG: mostrar a query executada (ativa só se precisar)
+        bool verbose = true;
+        //if (verbose) {
+            //std::cout << "[DEBUG] Executando query: " << sql << std::endl;
+        //}
+
+        if (rc != SQLITE_OK) {
+            std::cerr << "Erro ao Inserir dados: " 
+                    << (errMsg ? errMsg : "mensagem de erro desconhecida") << std::endl;
+
+            if (verbose && errMsg) {
+                std::cerr << "[ERRO SQL] " << errMsg << std::endl;
+            }
+
             sqlite3_free(errMsg); 
-        } else {
-            std::cout << "Dados inseridos corretamente!" << std::endl;
         }
     }
 
     // imprimir a tabela
     void printTable(const std::string& tableName) {
+        std::lock_guard<std::mutex> lock(dbMutex);
         // callback que será chamada para cada linha do resultado
         auto callback = [](void* data, int argc, char** argv, char** colNames) -> int {
             for(int i = 0; i < argc; i++) {

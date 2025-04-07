@@ -11,7 +11,7 @@
 #include <iomanip>
 #include <sstream>
 #include <cmath>
-#include "dataframe.hpp"  // Agora estamos usando DataFrame
+#include "dataframe.hpp" 
 
 // BaseHandler agora lida com DataFrame
 class BaseHandler {

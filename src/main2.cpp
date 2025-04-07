@@ -40,94 +40,61 @@ void testSequentialPipeline() {
 }
 
 void testParallelPipeline(int numThreads) {
-    auto start = Clock::now();
+    auto start = std::chrono::high_resolution_clock::now();
 
+    // Criação da thread pool
     ThreadPool pool(numThreads);
 
+    // Criação do extractor e carregamento do DataFrame
     Extractor extractor;
     auto futureDf = pool.addTask(&Extractor::extractFromJson, &extractor, "../generator/orders.json");
     DataFrame<std::string> df = futureDf.get();
 
+    // Criando handlers para processamento dos dados
     ValidationHandler validationHandler;
     DateHandler dateHandler;
     RevenueHandler revenueHandler;
     CardRevenueHandler cardHandler;
 
+    // Processando o DataFrame com os handlers em paralelo
     auto f1 = pool.addTask(&ValidationHandler::process, &validationHandler, df);
     auto f2 = pool.addTask(&DateHandler::process, &dateHandler, df);
     DataFrame<std::string> dfValid = f1.get();
     DataFrame<std::string> dfDated = f2.get();
 
+    // Continuando com o processamento
     auto f3 = pool.addTask(&RevenueHandler::process, &revenueHandler, dfDated);
     auto f4 = pool.addTask(&CardRevenueHandler::process, &cardHandler, dfDated);
     DataFrame<std::string> dfRevenue = f3.get();
     DataFrame<std::string> dfCards = f4.get();
 
-    DataBase db("earning3.db");
+    // Criando e conectando ao banco de dados
+    DataBase db("earning.db");
     db.createTable("faturamento", "(reservation_time TEXT PRIMARY KEY, price REAL)");
     db.createTable("faturamentoMetodo", "(payment_method TEXT PRIMARY KEY, price REAL)");
 
+    // Carregando os dados processados no banco
     Loader loader(db);
-    pool.addTask(&Loader::loadData, &loader, "faturamento", dfRevenue, std::vector<std::string>{"reservation_time", "price"});
-    pool.addTask(&Loader::loadData, &loader, "faturamentoMetodo", dfCards, std::vector<std::string>{"payment_method", "price"});
+    auto f5 = pool.addTask(&Loader::loadData, &loader, "faturamento", dfRevenue, std::vector<std::string>{"reservation_time", "price"});
+    auto f6 = pool.addTask(&Loader::loadData, &loader, "faturamentoMetodo", dfCards, std::vector<std::string>{"payment_method", "price"});
 
-    // Dá um tempo para que as tarefas de loading terminem (alternativa ao join manual)
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    // Aguardando as inserções terminarem
+    f5.get();
+    f6.get();
 
-    auto end = Clock::now();
+    // Calculando o tempo total do processamento
+    auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "\n⏱️ Tempo (paralelo com " << numThreads << " threads): " << duration.count() << " ms\n";
 }
 
-void testParallelPipeline2(int numThreads) {
-    auto start = Clock::now();
-
-    ThreadPool pool(numThreads);
-
-    Extractor extractor;
-    auto futureDf = pool.addTask(&Extractor::extractFromJson, &extractor, "../generator/orders.json");
-    DataFrame<std::string> df = futureDf.get();
-
-    ValidationHandler validationHandler;
-    DateHandler dateHandler;
-    RevenueHandler revenueHandler;
-    CardRevenueHandler cardHandler;
-
-    auto f1 = pool.addTask(&ValidationHandler::process, &validationHandler, df);
-    auto f2 = pool.addTask(&DateHandler::process, &dateHandler, df);
-    DataFrame<std::string> dfValid = f1.get();
-    DataFrame<std::string> dfDated = f2.get();
-
-    auto f3 = pool.addTask(&RevenueHandler::process, &revenueHandler, dfDated);
-    auto f4 = pool.addTask(&CardRevenueHandler::process, &cardHandler, dfDated);
-    DataFrame<std::string> dfRevenue = f3.get();
-    DataFrame<std::string> dfCards = f4.get();
-
-    DataBase db("earning4.db");
-    db.createTable("faturamento", "(reservation_time TEXT PRIMARY KEY, price REAL)");
-    db.createTable("faturamentoMetodo", "(payment_method TEXT PRIMARY KEY, price REAL)");
-
-    Loader loader(db);
-    pool.addTask(&Loader::loadData, &loader, "faturamento", dfRevenue, std::vector<std::string>{"reservation_time", "price"});
-    pool.addTask(&Loader::loadData, &loader, "faturamentoMetodo", dfCards, std::vector<std::string>{"payment_method", "price"});
-
-    // Dá um tempo para que as tarefas de loading terminem (alternativa ao join manual)
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));
-
-    auto end = Clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    std::cout << "\n⏱️ Tempo (paralelo com " << numThreads << " threads): " << duration.count() << " ms\n";
-}
 
 int main() {
     std::cout << "\n=== Benchmark: Versão SEQUENCIAL ===" << std::endl;
     testSequentialPipeline();
 
-    std::cout << "\n=== Benchmark: Versão PARALELA (6 threads) ===" << std::endl;
-    testParallelPipeline(20);
-
-    std::cout << "\n=== Benchmark: Versão PARALELA (10 threads) ===" << std::endl;
-    testParallelPipeline2(10);
+    std::cout << "\n=== Benchmark: Versão PARALELA (12 threads) ===" << std::endl;
+    testParallelPipeline(12);
 
     return 0;
 }

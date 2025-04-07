@@ -17,7 +17,7 @@ def generate_flight_orders(n):
         customer_name = faker.name()
         status = random.choice(["pending", "confirmed", "cancelled"])
         payment_method = random.choice(["credit_card", "debit_card", "paypal"])
-        reservation_time = faker.date_time_between(start_date = "-60d", end_date = "now").isoformat()
+        reservation_time = faker.date_time_between(start_date = "-600d", end_date = "now").isoformat()
         price = round(random.uniform(200.0, 2000.0), 2)
 
         order = {
@@ -35,6 +35,6 @@ def generate_flight_orders(n):
 
     return orders
 
-orders = generate_flight_orders(500) 
+orders = generate_flight_orders(100000) 
 with open("orders.json", "w") as f:
     json.dump(orders, f, indent=2)
