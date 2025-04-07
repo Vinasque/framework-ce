@@ -93,8 +93,8 @@ int main() {
     std::cout << "\n=== Benchmark: Versão SEQUENCIAL ===" << std::endl;
     testSequentialPipeline();
 
-    std::cout << "\n=== Benchmark: Versão PARALELA (12 threads) ===" << std::endl;
-    testParallelPipeline(12);
+    std::cout << "\n=== Benchmark: Versão PARALELA (8 threads) ===" << std::endl;
+    testParallelPipeline(8);
 
     return 0;
 }

@@ -34,7 +34,7 @@ public:
                         this->tasks.pop();
                     }
 
-                    task();  // Executa a tarefa
+                    task(); 
                 }
             });
         }
