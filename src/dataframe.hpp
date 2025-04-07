@@ -341,6 +341,45 @@ public:
         return columns;
     }
 
+    /**
+ * Extrai as primeiras N linhas do DataFrame, removendo-as do original
+ * @param n Número de linhas a extrair
+ * @return Novo DataFrame com as N primeiras linhas
+ * @throws std::out_of_range Se n for maior que o número de linhas
+ */
+DataFrame<T> extractFirstNLines(int n) {
+    if (n <= 0) {
+        return DataFrame<T>();  // Retorna DataFrame vazio
+    }
+    
+    if (n > shape.first) {
+        throw std::out_of_range("Cannot extract more lines than available in DataFrame");
+    }
+
+    // Cria novo DataFrame com as mesmas colunas
+    DataFrame<T> result;
+    for (const auto& col : columns) {
+        result.addColumn(col, Series<T>());
+    }
+
+    // Extrai as linhas
+    for (int i = 0; i < n; ++i) {
+        // Pega a primeira linha do DataFrame original
+        std::vector<T> line;
+        for (int j = 0; j < shape.second; ++j) {
+            line.push_back(series[j][0]);
+        }
+        
+        // Adiciona ao novo DataFrame
+        result.addLine(line);
+        
+        // Remove do DataFrame original
+        deleteLine(0);  // Sempre remove a primeira linha (índice 0)
+    }
+
+    return result;
+}
+
 private:
     // achar o index da coluna por nome
     int column_id(const std::string& columnName) const {
