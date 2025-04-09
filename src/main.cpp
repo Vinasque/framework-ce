@@ -1,68 +1,99 @@
 #include <iostream>
+#include <vector>
+#include <chrono>
 #include "dataframe.hpp"
 #include "extractor.hpp"
 #include "handler.hpp"
 #include "database.h"
 #include "loader.hpp"
+#include "ThreadPool.hpp"
 
-void testHandlerAndDatabase() {
-    try {
-        // 1. Cria/abre o banco de dados
-        DataBase db("earning.db");
+using Clock = std::chrono::high_resolution_clock;
 
-        // 2. Cria as tabelas (se não existir)
-        db.createTable("faturamento", "(reservation_time TEXT PRIMARY KEY, price REAL)");
-        db.createTable("faturamentoMetodo", "(payment_method TEXT PRIMARY KEY, price REAL)");
+void testSequentialPipeline() {
+    auto start = Clock::now();
 
-        // 3. Usa o Extractor para pegar dados do JSON
-        Extractor extractor;
-        DataFrame<std::string> df = extractor.extractFromJson("../generator/orders.json");
+    DataBase db("earning2.db");
+    db.createTable("faturamento", "(reservation_time TEXT PRIMARY KEY, price REAL)");
+    db.createTable("faturamentoMetodo", "(payment_method TEXT PRIMARY KEY, price REAL)");
 
-        std::cout << "\nDataFrame carregado do JSON:" << std::endl;
+    Extractor extractor;
+    DataFrame<std::string> df = extractor.extractFromJson("../generator/orders.json");
 
-        // 4. Cria os Handlers
-        ValidationHandler validationHandler;
-        DateHandler dateHandler;
-        RevenueHandler revenueHandler;
-        CardRevenueHandler dataRevenueHandler;
+    ValidationHandler validationHandler;
+    DateHandler dateHandler;
+    RevenueHandler revenueHandler;
+    CardRevenueHandler cardHandler;
 
-        // 5. Passando o DataFrame pelos handlers sequencialmente
-        DataFrame<std::string> df2 = validationHandler.process(df);  // Valida o DataFrame
-        DataFrame<std::string> df3 = dateHandler.process(df2);        // Formata a data
-        DataFrame<std::string> df4 = revenueHandler.process(df3);    // Calcula a receita por dia
-        DataFrame<std::string> df5 = dataRevenueHandler.process(df3);    // Calcula a receita por metodo de pagamento
-        df5.print();
+    DataFrame<std::string> df2 = validationHandler.process(df);
+    DataFrame<std::string> df3 = dateHandler.process(df2);
+    DataFrame<std::string> df4 = revenueHandler.process(df3);
+    DataFrame<std::string> df5 = cardHandler.process(df3);
 
-        std::cout << "\nProcessamento de reservas concluído!" << std::endl;
+    Loader loader(db);
+    loader.loadData("faturamento", df4, {"reservation_time", "price"}, false);
+    loader.loadData("faturamentoMetodo", df5, {"payment_method", "price"}, false);
 
-        // 6. Exibir a receita total calculada pelo RevenueHandler
-        std::cout << "Receita total: " << revenueHandler.getTotalRevenue() << std::endl;
+    auto end = Clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    std::cout << "\n⏱️ Tempo (sequencial): " << duration.count() << " ms\n";
+}
 
-        // 7. Definir as colunas que serão usadas em cada tabela
-        std::vector<std::string> faturamentoColumns = {"reservation_time", "price"};
-        std::vector<std::string> faturamentoMetodoColumns = {"payment_method", "price"};
+void testParallelPipeline(int numThreads) {
+    auto start = std::chrono::high_resolution_clock::now();
 
-        // 8. Cria o Loader e carrega os dados no banco de dados
-        Loader loader(db);
-        std::cout << "teste 1" << std::endl;
-        
-        // Carrega os dados na tabela "faturamento"
-        loader.loadData("faturamento", df4, faturamentoColumns);  
+    // Criação da thread pool
+    ThreadPool pool(numThreads);
 
-        // Carrega os dados na tabela "faturamentoMetodo"
-        loader.loadData("faturamentoMetodo", df5, faturamentoMetodoColumns);  
+    // Criação do extractor e carregamento do DataFrame
+    Extractor extractor;
+    auto futureDf = pool.addTask(&Extractor::extractFromJson, &extractor, "../generator/orders.json");
+    DataFrame<std::string> df = futureDf.get();
 
-        std::cout << "\nTabela 'faturamento' após inserção dos dados:" << std::endl;
-        db.printTable("faturamento");
-        std::cout << "\nTabela 'faturamentoMetodo' após inserção dos dados:" << std::endl;
-        db.printTable("faturamentoMetodo");
+    // Criando handlers para processamento dos dados
+    ValidationHandler validationHandler;
+    DateHandler dateHandler;
+    RevenueHandler revenueHandler;
+    CardRevenueHandler cardHandler;
 
-    } catch (const std::exception& e) {
-        std::cerr << "Erro: " << e.what() << std::endl;
-    }
+    // Processando o DataFrame com os handlers em paralelo
+    auto f1 = pool.addTask(&ValidationHandler::process, &validationHandler, df);
+    auto f2 = pool.addTask(&DateHandler::process, &dateHandler, df);
+    DataFrame<std::string> dfValid = f1.get();
+    DataFrame<std::string> dfDated = f2.get();
+
+    // Continuando com o processamento
+    auto f3 = pool.addTask(&RevenueHandler::process, &revenueHandler, dfDated);
+    auto f4 = pool.addTask(&CardRevenueHandler::process, &cardHandler, dfDated);
+    DataFrame<std::string> dfRevenue = f3.get();
+    DataFrame<std::string> dfCards = f4.get();
+
+    // Criando e conectando ao banco de dados
+    DataBase db("earning.db");
+    db.createTable("faturamento", "(reservation_time TEXT PRIMARY KEY, price REAL)");
+    db.createTable("faturamentoMetodo", "(payment_method TEXT PRIMARY KEY, price REAL)");
+
+    // Carregando os dados processados no banco
+    Loader loader(db);
+    auto f5 = pool.addTask(&Loader::loadData, &loader, "faturamento", dfRevenue, std::vector<std::string>{"reservation_time", "price"}, false);
+    auto f6 = pool.addTask(&Loader::loadData, &loader, "faturamentoMetodo", dfCards, std::vector<std::string>{"payment_method", "price"}, false);
+
+    // Aguardando as inserções terminarem
+    f5.get();
+    f6.get();
+
+    // Calculando o tempo total do processamento
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    std::cout << "\n⏱️ Tempo (paralelo com " << numThreads << " threads): " << duration.count() << " ms\n";
 }
 
 int main() {
-    testHandlerAndDatabase();
+    std::cout << "\n=== Benchmark: Versão SEQUENCIAL ===" << std::endl;
+    testSequentialPipeline();
+
+    std::cout << "\n=== Benchmark: Versão PARALELA (8 threads) ===" << std::endl;
+    testParallelPipeline(4);
+
     return 0;
 }

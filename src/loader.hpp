@@ -13,26 +13,32 @@ public:
     Loader(DataBase& db) : database(db) {}
 
     // Função genérica para carregar dados para qualquer tabela
-    void loadData(const std::string& table_name, const DataFrame<std::string>& df, const std::vector<std::string>& columns) {
+    void loadData(const std::string& table_name, const DataFrame<std::string>& df, const std::vector<std::string>& columns, bool bGroupBy) {
+
+        // std::cout << "Chamou load data" << std::endl;
+        // std::cout << dfColumns[0] << std::endl;
+
         // Obtém as colunas e valores do DataFrame
         const auto& dfColumns = df.getColumns();
-
-        std::cout << dfColumns[0] << std::endl;
         
         // Insere cada linha no banco
         for (int i = 0; i < df.numRows(); ++i) {
             std::vector<std::string> values;
+            // if (i % 100 == 0) {
+            //     std::cout << "inseriu linha" << i << std::endl;
+            // }
 
             // Para cada coluna que será inserida, pega os valores do DataFrame
             for (const auto& column : columns) {
                 values.push_back(df.getValue(column, i));
             }
+            
 
             // Chama a função de inserção passando as colunas e os valores
-            database.insertValuesintoTable(table_name, columns, values);
+            database.insertValuesintoTable(table_name, columns, values, bGroupBy);
         }
 
-        std::cout << "Dados carregados com sucesso na tabela '" << table_name << "'!" << std::endl;
+        // std::cout << "Dados carregados com sucesso na tabela '" << table_name << "'!" << std::endl;
     }
 };
     

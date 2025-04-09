@@ -5,10 +5,14 @@
 #include <fstream>
 #include <iostream>
 #include "dataframe.hpp"
+#include "queue.hpp"
 #include <sqlite3.h>
 
 class Extractor {
 public:
+    // Variável de Debug
+    bool bDebugMode = true;
+
     Extractor() = default;
 
     // extrair dados de um JSON e retornar como DataFrame
@@ -21,6 +25,9 @@ public:
 
             nlohmann::json jsonData;
             file >> jsonData;
+
+            int totalRecords = jsonData.size();
+            // std::cout << "Total: " << totalRecords << std::endl;
 
             if (!jsonData.is_array()) {
                 throw std::runtime_error("JSON data should be an array of records");
@@ -165,6 +172,80 @@ public:
             return DataFrame<std::string>(columns, series);
         } catch (const std::exception& e) {
             std::cerr << "SQLite extraction error: " << e.what() << std::endl;
+            throw;
+        }
+    }
+
+    void extractFromJsonPartitioned(const std::string& filePath, int numThreads, Queue<int, DataFrame<std::string>>& partitionQueue) {
+        try {
+            std::ifstream file(filePath);
+            if (!file.is_open()) {
+                throw std::runtime_error("Could not open the file: " + filePath);
+            }
+
+            nlohmann::json jsonData;
+            file >> jsonData;
+
+            if (!jsonData.is_array()) {
+                throw std::runtime_error("JSON data should be an array of records");
+            }
+
+            int totalRecords = jsonData.size();
+            int recordsPerPartition = totalRecords / numThreads;
+            // std::cout << "Total: " << totalRecords << std::endl;
+
+            // Lendo e particionando os dados diretamente
+            for (int i = 0; i < numThreads; ++i) {
+                int startIdx = i * recordsPerPartition;
+                int endIdx = (i == numThreads - 1) ? totalRecords : (i + 1) * recordsPerPartition;
+
+                std::vector<std::string> flightIds, seats, userIds, customerNames;
+                std::vector<std::string> statuses, paymentMethods, reservationTimes, prices;
+
+                for (int j = startIdx; j < endIdx; ++j) {
+                    const auto& record = jsonData[j];
+                    flightIds.push_back(record["flight_id"].get<std::string>());
+                    seats.push_back(record["seat"].get<std::string>());
+                    userIds.push_back(record["user_id"].get<std::string>());
+                    customerNames.push_back(record["customer_name"].get<std::string>());
+                    statuses.push_back(record["status"].get<std::string>());
+                    paymentMethods.push_back(record["payment_method"].get<std::string>());
+                    reservationTimes.push_back(record["reservation_time"].get<std::string>());
+
+                    if (record.contains("price")) {
+                        prices.push_back(std::to_string(record["price"].get<double>()));
+                    } else {
+                        prices.push_back("0.0");
+                    }
+                }
+
+                std::vector<std::string> columns = {
+                    "flight_id", "seat", "user_id", "customer_name",
+                    "status", "payment_method", "reservation_time", "price"
+                };
+
+                std::vector<Series<std::string>> series = {
+                    Series<std::string>(flightIds),
+                    Series<std::string>(seats),
+                    Series<std::string>(userIds),
+                    Series<std::string>(customerNames),
+                    Series<std::string>(statuses),
+                    Series<std::string>(paymentMethods),
+                    Series<std::string>(reservationTimes),
+                    Series<std::string>(prices)
+                };
+
+                // Criando o DataFrame para a partição
+                DataFrame<std::string> df(columns, series);
+
+                // std::cout << df.numRows() << std::endl;
+
+                // Enfileirando o DataFrame particionado
+                partitionQueue.enQueue({i, df});
+            }
+
+        } catch (const std::exception& e) {
+            std::cerr << "Extraction error: " << e.what() << std::endl;
             throw;
         }
     }

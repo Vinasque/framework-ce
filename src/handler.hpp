@@ -65,6 +65,7 @@ public:
 class ValidationHandler : public BaseHandler {
     public:
         DataFrame<std::string> process(DataFrame<std::string>& df) override {
+
             // Aqui, você pode processar o df como necessário. Por exemplo:
             for (int i = 0; i < df.numRows(); ++i) {
                 if (df.getValue("flight_id", i).empty()) {

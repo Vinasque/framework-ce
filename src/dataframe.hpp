@@ -348,6 +348,7 @@ public:
  * @throws std::out_of_range Se n for maior que o número de linhas
  */
 DataFrame<T> extractFirstNLines(int n) {
+
     if (n <= 0) {
         return DataFrame<T>();  // Retorna DataFrame vazio
     }
@@ -355,13 +356,13 @@ DataFrame<T> extractFirstNLines(int n) {
     if (n > shape.first) {
         throw std::out_of_range("Cannot extract more lines than available in DataFrame");
     }
-
+    
     // Cria novo DataFrame com as mesmas colunas
     DataFrame<T> result;
     for (const auto& col : columns) {
         result.addColumn(col, Series<T>());
     }
-
+    
     // Extrai as linhas
     for (int i = 0; i < n; ++i) {
         // Pega a primeira linha do DataFrame original

@@ -2,6 +2,7 @@
 .vscode/
 
 # Ignora arquivos gerados na pasta src
-# src/*.db
+src/*.db
 src/*.o
 src/*.exe
+generator/*.json

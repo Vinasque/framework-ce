@@ -25,14 +25,14 @@ public:
             std::cerr << "Erro ao abrir o banco de dados: " << sqlite3_errmsg(db) << std::endl;
             throw std::runtime_error("Erro ao abrir o banco de dados");
         }
-        std::cout << "Banco de dados aberto com sucesso!" << std::endl;
+        // std::cout << "Banco de dados aberto com sucesso!" << std::endl;
 
     }
 
     ~DataBase() {
         if (db) {
             sqlite3_close(db); // Fecha a conexão com o modelo
-            std::cout << "Banco de dados fechado!" << std::endl;
+            // std::cout << "Banco de dados fechado!" << std::endl;
         }
     }
 
@@ -49,14 +49,15 @@ public:
             std::cout << "Erro ao criar tabela: " << errMsg << std::endl;
             sqlite3_free(errMsg); }
         else {
-            std::cout << "Tabela criada corretamente!" << std::endl;
+            // std::cout << "Tabela criada corretamente!" << std::endl;
         }
     }
 
     // inserir valores na tabela, agora com colunas e valores passados como parâmetros
     void insertValuesintoTable(const std::string& table_name, 
                                const std::vector<std::string>& columns, 
-                               const std::vector<std::string>& values) 
+                               const std::vector<std::string>& values,
+                               bool bGroupBy) 
     {
         std::lock_guard<std::mutex> lock(dbMutex);
         // Verifica se o número de colunas é igual ao número de valores
@@ -85,7 +86,14 @@ public:
         valuesStr += ")";
 
         // Cria a query SQL
-        sql = "INSERT INTO " + table_name + " " + columnsStr + " VALUES " + valuesStr + ";";
+        if (bGroupBy) {
+            // TODO: deixar isso genérico
+            sql = "INSERT INTO " + table_name + " " + columnsStr + " VALUES " + valuesStr +
+            " ON CONFLICT(" + columns[0] + ") DO UPDATE SET " + columns.back() + " = " + columns.back() + " + EXCLUDED." + columns.back() + ";";
+        }
+        else {
+            sql = "INSERT INTO " + table_name + " " + columnsStr + " VALUES " + valuesStr + ";";
+        }
         
         // Executa a query
         errMsg = nullptr;

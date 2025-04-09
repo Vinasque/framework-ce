@@ -43,7 +43,7 @@ def generate_flight_orders(n, error_probability=0.01):
 
     return orders
 
-orders = generate_flight_orders(500, error_probability=0.1)
+orders = generate_flight_orders(1000000, error_probability=0.1)
 
-with open("orders1.json", "w") as f:
+with open("ordersUmMilhao.json", "w") as f:
     json.dump(orders, f, indent=2, default=str)
