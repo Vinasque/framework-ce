@@ -135,4 +135,23 @@ public:
         return groupedDf;  // Retorna o DataFrame agrupado
     }
 };
+
+class StatusFilterHandler : public BaseHandler {
+private:
+    std::string targetStatus;
+    
+public:
+    StatusFilterHandler(const std::string& status) : targetStatus(status) {}
+    
+    DataFrame<std::string> process(DataFrame<std::string>& df) override {
+        for (int i = df.numRows() - 1; i >= 0; --i) {
+            if (df.getValue("status", i) != targetStatus) {
+                df.deleteLine(i);
+            }
+        }
+        
+        return df;
+    }
+};    
+
 #endif // HANDLER_HPP
