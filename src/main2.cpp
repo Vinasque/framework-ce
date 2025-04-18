@@ -14,16 +14,17 @@ using Clock = std::chrono::high_resolution_clock;
 
 // Função para imprimir o cabeçalho da tabela
 void printTableHeader() {
-    std::cout << "\n-------------------------------------------------------------------------------------------------------------------" << std::endl;
-    std::cout << "| Arquivo        | Seq. Process | Seq. Load | Par. (4) Process | Par. (4) Load | Par. (8) Process | Par. (8) Load |" << std::endl;
-    std::cout << "-------------------------------------------------------------------------------------------------------------------" << std::endl;
+    std::cout << "\n------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
+    std::cout << "| Arquivo        | Seq. Process | Seq. Load | Par. (4) Process | Par. (4) Load | Par. (8) Process | Par. (8) Load | Par. (12) Process | Par. (12) Load |" << std::endl;
+    std::cout << "--------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
 }
 
 // Função para imprimir as linhas da tabela com os resultados dos testes
 void printTableRow(const std::string& nomeArquivo, 
         const long& seqProc, const long& seqLoad,
         const long& par4Proc, const long& par4Load,
-        const long& par8Proc, const long& par8Load) {
+        const long& par8Proc, const long& par8Load,
+        const long& par12Proc, const long& par12Load) {
     std::cout << "| " << std::setw(14) << std::left << nomeArquivo
     << " | " << std::setw(12) << std::right << seqProc
     << " | " << std::setw(9) << std::right << seqLoad
@@ -31,6 +32,8 @@ void printTableRow(const std::string& nomeArquivo,
     << " | " << std::setw(13) << std::right << par4Load
     << " | " << std::setw(16) << std::right << par8Proc
     << " | " << std::setw(13) << std::right << par8Load
+    << " | " << std::setw(16) << std::right << par12Proc
+    << " | " << std::setw(13) << std::right << par12Load
     << " |" << std::endl;
     std::cout << "-----------------------------------------------------------------------------------------------------------------" << std::endl;
 }
@@ -43,6 +46,8 @@ struct TestResults {
     long parallel4LoadTime;
     long parallel8ProcessingTime;
     long parallel8LoadTime;
+    long parallel12ProcessingTime;
+    long parallel12LoadTime;
 };
 
 // Função para executar o pipeline sequencial e calcular os tempos
@@ -84,6 +89,8 @@ void testSequentialPipeline(DataBase& db, std::string nomeArquivo, long& sequent
 
     auto end = Clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+
+    std::cout << "Sequencial terminou" << std::endl;
 }
 
 // Função para executar o pipeline paralelo e calcular os tempos
@@ -198,6 +205,11 @@ void Test()
         testParallelPipeline(8, db, arquivos[i], resultados[i].parallel8ProcessingTime, resultados[i].parallel8LoadTime);
     }
 
+    // Testes Paralelos (12 threads)
+    for (size_t i = 0; i < arquivos.size(); ++i) {
+        testParallelPipeline(12, db, arquivos[i], resultados[i].parallel12ProcessingTime, resultados[i].parallel12LoadTime);
+    }
+
     // Imprime a tabela final com os resultados
     for (size_t i = 0; i < arquivos.size(); ++i) {
         printTableRow(
@@ -207,7 +219,9 @@ void Test()
             resultados[i].parallel4ProcessingTime,
             resultados[i].parallel4LoadTime,
             resultados[i].parallel8ProcessingTime,
-            resultados[i].parallel8LoadTime
+            resultados[i].parallel8LoadTime,
+            resultados[i].parallel12ProcessingTime,
+            resultados[i].parallel12LoadTime
         );
     }
 }
