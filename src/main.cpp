@@ -13,7 +13,7 @@ using Clock = std::chrono::high_resolution_clock;
 void testSequentialPipeline() {
     auto start = Clock::now();
 
-    DataBase db("earning2.db");
+    DataBase db("../databases/earning2.db");
     db.createTable("faturamento", "(reservation_time TEXT PRIMARY KEY, price REAL)");
     db.createTable("faturamentoMetodo", "(payment_method TEXT PRIMARY KEY, price REAL)");
 
@@ -93,7 +93,7 @@ int main() {
     testSequentialPipeline();
 
     std::cout << "\n=== Benchmark: Versão PARALELA (8 threads) ===" << std::endl;
-    testParallelPipeline(4);
+    testParallelPipeline(8);
 
     return 0;
 }

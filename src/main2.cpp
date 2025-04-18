@@ -179,7 +179,7 @@ void Test()
 {
     std::vector<std::string> arquivos = {"ordersCemMil"};
     std::vector<TestResults> resultados(arquivos.size());
-    DataBase db("DB_Teste.db");
+    DataBase db("../databases/DB_Teste.db");
 
     printTableHeader();
 
