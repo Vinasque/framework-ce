@@ -35,6 +35,6 @@ def generate_flight_orders(n):
 
     return orders
 
-orders = generate_flight_orders(10000000) 
-with open("ordersDezMilhoes.json", "w") as f:
+orders = generate_flight_orders(1000000) 
+with open("ordersUmMilhao.json", "w") as f:
     json.dump(orders, f, indent=2)

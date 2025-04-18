@@ -59,6 +59,7 @@ void testSequentialPipeline(DataBase& db, std::string nomeArquivo, long& sequent
 
     // Criando os handlers para processamento dos dados
     ValidationHandler validationHandler;
+    StatusFilterHandler statusFilterHandler("confirmed");  // Adiciona o StatusFilterHandler
     DateHandler dateHandler;
     RevenueHandler revenueHandler;
     CardRevenueHandler cardHandler;
@@ -66,17 +67,18 @@ void testSequentialPipeline(DataBase& db, std::string nomeArquivo, long& sequent
     // Início do processamento
     auto startProcessing = Clock::now();
     DataFrame<std::string> df2 = validationHandler.process(df);
-    DataFrame<std::string> df3 = dateHandler.process(df2);
-    DataFrame<std::string> df4 = revenueHandler.process(df3);
-    DataFrame<std::string> df5 = cardHandler.process(df3);
+    DataFrame<std::string> df3 = statusFilterHandler.process(df2);  // Aplica o StatusFilterHandler
+    DataFrame<std::string> df4 = dateHandler.process(df3);
+    DataFrame<std::string> df5 = revenueHandler.process(df4);
+    DataFrame<std::string> df6 = cardHandler.process(df4);  // Corrigido para df4 (DataFrame atualizado)
     auto endProcessing = Clock::now();
     sequentialProcessingTime = std::chrono::duration_cast<std::chrono::milliseconds>(endProcessing - startProcessing).count();
 
     // Carregamento dos dados no banco de dados
     Loader loader(db);
     auto startLoad = Clock::now();
-    loader.loadData("faturamento" + nomeArquivo, df4, {"reservation_time", "price"}, false);
-    loader.loadData("faturamentoMetodo" + nomeArquivo, df5, {"payment_method", "price"}, false);
+    loader.loadData("faturamento" + nomeArquivo, df5, {"reservation_time", "price"}, false);
+    loader.loadData("faturamentoMetodo" + nomeArquivo, df6, {"payment_method", "price"}, false);
     auto endLoad = Clock::now();
     sequentialLoadTime = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad).count();
 
@@ -86,7 +88,7 @@ void testSequentialPipeline(DataBase& db, std::string nomeArquivo, long& sequent
 
 // Função para executar o pipeline paralelo e calcular os tempos
 void testParallelPipeline(int numThreads, DataBase& db, std::string nomeArquivo, 
-                          long& parallelProcessingTime, long& parallelLoadTime) {
+        long& parallelProcessingTime, long& parallelLoadTime) {
     auto start = Clock::now();
 
     // Criação da thread pool
@@ -103,6 +105,7 @@ void testParallelPipeline(int numThreads, DataBase& db, std::string nomeArquivo,
 
     // Criando handlers para processamento dos dados
     ValidationHandler validationHandler;
+    StatusFilterHandler statusFilterHandler("confirmed");  // Adiciona o StatusFilterHandler
     DateHandler dateHandler;
     RevenueHandler revenueHandler;
     CardRevenueHandler cardHandler;
@@ -110,36 +113,39 @@ void testParallelPipeline(int numThreads, DataBase& db, std::string nomeArquivo,
     // Início do processamento paralelo
     auto startProcessing = Clock::now();
 
-    // (1) Processamento de validação -> data -> revenue/card
+    // (1) Processamento de validação -> status -> data -> revenue/card
     std::vector<std::future<void>> futures;  // Para armazenar as futuras tarefas
 
     for (int i = 0; i < numThreads; ++i) {
-        futures.push_back(pool.addTask([&, i] {
-            // Etapa 1: Validação
-            auto [index, chunk] = partitionQueue.deQueue();
-            auto validChunk = validationHandler.process(chunk);
+    futures.push_back(pool.addTask([&, i] {
+    // Etapa 1: Validação
+    auto [index, chunk] = partitionQueue.deQueue();
+    auto validChunk = validationHandler.process(chunk);
 
-            // Etapa 2: Data (agendada automaticamente)
-            auto datedChunk = dateHandler.process(validChunk);
+    // Etapa 2: Status (filtra "confirmed")
+    auto filteredChunk = statusFilterHandler.process(validChunk);
 
-            // Etapa 3: Calcula revenue e card, mas não coloca nas filas ainda
-            auto revenueChunk = revenueHandler.process(datedChunk);
-            auto cardChunk = cardHandler.process(datedChunk);
+    // Etapa 3: Data (agendada automaticamente)
+    auto datedChunk = dateHandler.process(filteredChunk);
 
-            // Após todas as tarefas principais, agende as tarefas de enfileiramento
-            pool.addTask([&, index, revenueChunk] {
-                revenueQueue.enQueue({index, revenueChunk});
-            });
+    // Etapa 4: Calcula revenue e card, mas não coloca nas filas ainda
+    auto revenueChunk = revenueHandler.process(datedChunk);
+    auto cardChunk = cardHandler.process(datedChunk);
 
-            pool.addTask([&, index, cardChunk] {
-                cardQueue.enQueue({index, cardChunk});
-            });
-        }));
+    // Após todas as tarefas principais, agende as tarefas de enfileiramento
+    pool.addTask([&, index, revenueChunk] {
+    revenueQueue.enQueue({index, revenueChunk});
+    });
+
+    pool.addTask([&, index, cardChunk] {
+    cardQueue.enQueue({index, cardChunk});
+    });
+    }));
     }
 
     // Espera TODAS as tarefas terminarem
     for (auto& fut : futures) {
-        fut.get();  // Bloqueia até a tarefa acabar
+    fut.get();  // Bloqueia até a tarefa acabar
     }
 
     auto endProcessing = Clock::now();
@@ -150,15 +156,15 @@ void testParallelPipeline(int numThreads, DataBase& db, std::string nomeArquivo,
     db.createTable("faturamentoMetodo" + nomeArquivo + "_" + std::to_string(numThreads), "(payment_method TEXT PRIMARY KEY, price REAL)");
 
     Loader loader(db);
-    
+
     auto startLoad = Clock::now();
     // Finalizando o carregamento dos dados processados
     for (int i = 0; i < numThreads; ++i) {
-        auto [index, revenueChunk] = revenueQueue.deQueue();
-        auto [indexCard, cardChunk] = cardQueue.deQueue();
+    auto [index, revenueChunk] = revenueQueue.deQueue();
+    auto [indexCard, cardChunk] = cardQueue.deQueue();
 
-        loader.loadData("faturamento" + nomeArquivo + "_" + std::to_string(numThreads), revenueChunk, {"reservation_time", "price"}, true);
-        loader.loadData("faturamentoMetodo" + nomeArquivo + "_" + std::to_string(numThreads), cardChunk, {"payment_method", "price"}, true);
+    loader.loadData("faturamento" + nomeArquivo + "_" + std::to_string(numThreads), revenueChunk, {"reservation_time", "price"}, true);
+    loader.loadData("faturamentoMetodo" + nomeArquivo + "_" + std::to_string(numThreads), cardChunk, {"payment_method", "price"}, true);
     }
 
     auto endLoad = Clock::now();
@@ -171,7 +177,7 @@ void testParallelPipeline(int numThreads, DataBase& db, std::string nomeArquivo,
 // Função para executar todos os testes e imprimir os resultados
 void Test()
 {
-    std::vector<std::string> arquivos = {"ordersCemMil", "ordersUmMilhao"};
+    std::vector<std::string> arquivos = {"ordersCemMil"};
     std::vector<TestResults> resultados(arquivos.size());
     DataBase db("DB_Teste.db");
 
