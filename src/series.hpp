@@ -46,6 +46,14 @@ public:
         data_[index] = newValue;  // Atualiza o valor na posição especificada
     }
 
+    static Series<T> createEmpty(int size, const T& defaultValue = T()) {
+        Series<T> series;
+        for (int i = 0; i < size; ++i) {
+            series.addElement(defaultValue);
+        }
+        return series;
+    }
+
     // adicionar todos os elementos de outra série
     Series<T> appendSeries(const Series<T>& other) const {
         Series<T> result = this->copy(); 
