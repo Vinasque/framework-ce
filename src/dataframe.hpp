@@ -114,6 +114,22 @@ public:
         return series[colIdx][row];
     }
 
+    DataFrame<T> extractLines(size_t start, size_t end) {
+        if (start >= end || end > shape.first) {
+            throw std::out_of_range("Invalid range for extractLines");
+        }
+        
+        DataFrame<T> result;
+        for (size_t i = 0; i < columns.size(); ++i) {
+            Series<T> new_series;
+            for (size_t j = start; j < end; ++j) {
+                new_series.addElement(series[i][j]);
+            }
+            result.addColumn(columns[i], new_series);
+        }
+        return result;
+    }
+
     
     // Função para filtrar as linhas de um DataFrame baseado em uma condição numérica
     DataFrame<T> filter(const std::string& columnName, const std::string& condition, T value) {

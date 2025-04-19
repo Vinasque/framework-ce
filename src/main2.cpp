@@ -1,7 +1,8 @@
 #include <iostream>
 #include <vector>
 #include <chrono>
-#include <iomanip>  // Para std::setw
+#include <iomanip>
+#include <random>
 #include "dataframe.hpp"
 #include "extractor.hpp"
 #include "trigger.hpp"
@@ -11,17 +12,15 @@
 #include "ThreadPool.hpp"
 #include "queue.hpp"
 
-
 using Clock = std::chrono::high_resolution_clock;
 
-// Função para imprimir o cabeçalho da tabela
+// Print functions remain unchanged
 void printTableHeader() {
     std::cout << "\n------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
     std::cout << "| Arquivo        | Seq. Process | Seq. Load | Par. (4) Process | Par. (4) Load | Par. (8) Process | Par. (8) Load | Par. (12) Process | Par. (12) Load |" << std::endl;
     std::cout << "--------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
 }
 
-// Função para imprimir as linhas da tabela com os resultados dos testes
 void printTableRow(const std::string& nomeArquivo, 
         const long& seqProc, const long& seqLoad,
         const long& par4Proc, const long& par4Load,
@@ -40,216 +39,225 @@ void printTableRow(const std::string& nomeArquivo,
     std::cout << "-----------------------------------------------------------------------------------------------------------------" << std::endl;
 }
 
-// Estrutura para armazenar os resultados dos testes
+// Modified TestResults to track incremental runs
 struct TestResults {
-    long sequentialProcessingTime;
-    long sequentialLoadTime;
-    long parallel4ProcessingTime;
-    long parallel4LoadTime;
-    long parallel8ProcessingTime;
-    long parallel8LoadTime;
-    long parallel12ProcessingTime;
-    long parallel12LoadTime;
+    struct RunStats {
+        long processingTime;
+        long loadTime;
+        size_t linesProcessed;
+    };
+    
+    std::vector<RunStats> sequentialRuns;
+    std::vector<RunStats> parallel4Runs;
+    std::vector<RunStats> parallel8Runs;
+    std::vector<RunStats> parallel12Runs;
 };
 
-// Função para executar o pipeline sequencial e calcular os tempos
-void testSequentialPipeline(DataBase& db, std::string nomeArquivo, long& sequentialProcessingTime, long& sequentialLoadTime) {
+// Modified sequential pipeline to work with data chunks
+void processSequentialChunk(DataBase& db, const std::string& nomeArquivo, 
+                          DataFrame<std::string>& df,
+                          TestResults::RunStats& stats) {
     auto start = Clock::now();
 
-    // Criação das tabelas no banco de dados
+    // Create tables if they don't exist
     db.createTable("faturamento" + nomeArquivo, "(reservation_time TEXT PRIMARY KEY, price REAL)");
     db.createTable("faturamentoMetodo" + nomeArquivo, "(payment_method TEXT PRIMARY KEY, price REAL)");
 
-    // Criação do extractor e carregamento do DataFrame
-    Extractor extractor;
-    DataFrame<std::string> df = extractor.extractFromJson("../generator/" + nomeArquivo + ".json");
-
-    // Criando os handlers para processamento dos dados
+    // Processing handlers
     ValidationHandler validationHandler;
-    StatusFilterHandler statusFilterHandler("confirmed");  // Adiciona o StatusFilterHandler
+    StatusFilterHandler statusFilterHandler("confirmed");
     DateHandler dateHandler;
     RevenueHandler revenueHandler;
     CardRevenueHandler cardHandler;
 
-    // Início do processamento
+    // Process data
     auto startProcessing = Clock::now();
     DataFrame<std::string> df2 = validationHandler.process(df);
-    DataFrame<std::string> df3 = statusFilterHandler.process(df2);  // Aplica o StatusFilterHandler
+    DataFrame<std::string> df3 = statusFilterHandler.process(df2);
     DataFrame<std::string> df4 = dateHandler.process(df3);
     DataFrame<std::string> df5 = revenueHandler.process(df4);
-    DataFrame<std::string> df6 = cardHandler.process(df4);  // Corrigido para df4 (DataFrame atualizado)
+    DataFrame<std::string> df6 = cardHandler.process(df4);
     auto endProcessing = Clock::now();
-    sequentialProcessingTime = std::chrono::duration_cast<std::chrono::milliseconds>(endProcessing - startProcessing).count();
 
-    // Carregamento dos dados no banco de dados
+    // Load data
     Loader loader(db);
     auto startLoad = Clock::now();
     loader.loadData("faturamento" + nomeArquivo, df5, {"reservation_time", "price"}, false);
     loader.loadData("faturamentoMetodo" + nomeArquivo, df6, {"payment_method", "price"}, false);
     auto endLoad = Clock::now();
-    sequentialLoadTime = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad).count();
 
-    auto end = Clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-
-    std::cout << "Sequencial terminou" << std::endl;
+    // Update stats
+    stats.processingTime = std::chrono::duration_cast<std::chrono::milliseconds>(endProcessing - startProcessing).count();
+    stats.loadTime = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad).count();
+    stats.linesProcessed = df.numRows();
 }
 
-// Função para executar o pipeline paralelo e calcular os tempos
-void testParallelPipeline(int numThreads, DataBase& db, std::string nomeArquivo, 
-        long& parallelProcessingTime, long& parallelLoadTime) {
+// Modified parallel pipeline to work with data chunks
+void processParallelChunk(int numThreads, DataBase& db, const std::string& nomeArquivo,
+                        DataFrame<std::string>& df,
+                        TestResults::RunStats& stats) {
     auto start = Clock::now();
-
-    // Criação da thread pool
     ThreadPool pool(numThreads);
 
-    // Criação das filas com capacidade para os pedaços de DataFrame
-    Queue<int, DataFrame<std::string>> partitionQueue(numThreads);  // Primeira fila
-    Queue<int, DataFrame<std::string>> revenueQueue(numThreads);    // Fila de revenue
-    Queue<int, DataFrame<std::string>> cardQueue(numThreads);       // Fila de card
+    // Create queues
+    Queue<int, DataFrame<std::string>> partitionQueue(numThreads);
+    Queue<int, DataFrame<std::string>> revenueQueue(numThreads);
+    Queue<int, DataFrame<std::string>> cardQueue(numThreads);
 
-    // Criação do extractor e carregamento do DataFrame particionado
-    Extractor extractor;
-    extractor.extractFromJsonPartitioned("../generator/" + nomeArquivo + ".json", numThreads, partitionQueue);
+    // Partition the DataFrame
+    size_t chunk_size = df.numRows() / numThreads;
+    for (int i = 0; i < numThreads; ++i) {
+        size_t start_idx = i * chunk_size;
+        size_t end_idx = (i == numThreads - 1) ? df.numRows() : start_idx + chunk_size;
+        partitionQueue.enQueue({i, df.extractLines(start_idx, end_idx)});
+    }
 
-    // Criando handlers para processamento dos dados
+    // Create handlers
     ValidationHandler validationHandler;
-    StatusFilterHandler statusFilterHandler("confirmed");  // Adiciona o StatusFilterHandler
+    StatusFilterHandler statusFilterHandler("confirmed");
     DateHandler dateHandler;
     RevenueHandler revenueHandler;
     CardRevenueHandler cardHandler;
 
-    // Início do processamento paralelo
+    // Process data
     auto startProcessing = Clock::now();
-
-    // (1) Processamento de validação -> status -> data -> revenue/card
-    std::vector<std::future<void>> futures;  // Para armazenar as futuras tarefas
+    std::vector<std::future<void>> futures;
 
     for (int i = 0; i < numThreads; ++i) {
-    futures.push_back(pool.addTask([&, i] {
-    // Etapa 1: Validação
-    auto [index, chunk] = partitionQueue.deQueue();
-    auto validChunk = validationHandler.process(chunk);
+        futures.push_back(pool.addTask([&, i] {
+            auto [index, chunk] = partitionQueue.deQueue();
+            auto validChunk = validationHandler.process(chunk);
+            auto filteredChunk = statusFilterHandler.process(validChunk);
+            auto datedChunk = dateHandler.process(filteredChunk);
+            
+            auto revenueChunk = revenueHandler.process(datedChunk);
+            auto cardChunk = cardHandler.process(datedChunk);
 
-    // Etapa 2: Status (filtra "confirmed")
-    auto filteredChunk = statusFilterHandler.process(validChunk);
+            pool.addTask([&, index, revenueChunk] {
+                revenueQueue.enQueue({index, revenueChunk});
+            });
 
-    // Etapa 3: Data (agendada automaticamente)
-    auto datedChunk = dateHandler.process(filteredChunk);
-
-    // Etapa 4: Calcula revenue e card, mas não coloca nas filas ainda
-    auto revenueChunk = revenueHandler.process(datedChunk);
-    auto cardChunk = cardHandler.process(datedChunk);
-
-    // Após todas as tarefas principais, agende as tarefas de enfileiramento
-    pool.addTask([&, index, revenueChunk] {
-    revenueQueue.enQueue({index, revenueChunk});
-    });
-
-    pool.addTask([&, index, cardChunk] {
-    cardQueue.enQueue({index, cardChunk});
-    });
-    }));
+            pool.addTask([&, index, cardChunk] {
+                cardQueue.enQueue({index, cardChunk});
+            });
+        }));
     }
 
-    // Espera TODAS as tarefas terminarem
     for (auto& fut : futures) {
-    fut.get();  // Bloqueia até a tarefa acabar
+        fut.get();
     }
-
     auto endProcessing = Clock::now();
-    parallelProcessingTime = std::chrono::duration_cast<std::chrono::milliseconds>(endProcessing - startProcessing).count();
 
-    // Criando e conectando ao banco de dados
-    db.createTable("faturamento" + nomeArquivo + "_" + std::to_string(numThreads), "(reservation_time TEXT PRIMARY KEY, price REAL)");
-    db.createTable("faturamentoMetodo" + nomeArquivo + "_" + std::to_string(numThreads), "(payment_method TEXT PRIMARY KEY, price REAL)");
+    // Create tables
+    db.createTable("faturamento" + nomeArquivo + "_" + std::to_string(numThreads), 
+                  "(reservation_time TEXT PRIMARY KEY, price REAL)");
+    db.createTable("faturamentoMetodo" + nomeArquivo + "_" + std::to_string(numThreads),
+                  "(payment_method TEXT PRIMARY KEY, price REAL)");
 
+    // Load data
     Loader loader(db);
-
     auto startLoad = Clock::now();
-    // Finalizando o carregamento dos dados processados
     for (int i = 0; i < numThreads; ++i) {
-    auto [index, revenueChunk] = revenueQueue.deQueue();
-    auto [indexCard, cardChunk] = cardQueue.deQueue();
+        auto [index, revenueChunk] = revenueQueue.deQueue();
+        auto [indexCard, cardChunk] = cardQueue.deQueue();
 
-    loader.loadData("faturamento" + nomeArquivo + "_" + std::to_string(numThreads), revenueChunk, {"reservation_time", "price"}, true);
-    loader.loadData("faturamentoMetodo" + nomeArquivo + "_" + std::to_string(numThreads), cardChunk, {"payment_method", "price"}, true);
+        loader.loadData("faturamento" + nomeArquivo + "_" + std::to_string(numThreads), 
+                      revenueChunk, {"reservation_time", "price"}, true);
+        loader.loadData("faturamentoMetodo" + nomeArquivo + "_" + std::to_string(numThreads),
+                      cardChunk, {"payment_method", "price"}, true);
     }
-
     auto endLoad = Clock::now();
-    parallelLoadTime = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad).count();
 
-    auto end = Clock::now();
-    auto totalDuration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    // Update stats
+    stats.processingTime = std::chrono::duration_cast<std::chrono::milliseconds>(endProcessing - startProcessing).count();
+    stats.loadTime = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad).count();
+    stats.linesProcessed = df.numRows();
 }
 
-// Função para executar todos os testes e imprimir os resultados
+// Modified Test function with new trigger system
 void Test() {
-    std::vector<std::string> arquivos = {"ordersCemMil"};
-    std::vector<TestResults> resultados(arquivos.size());
+    Extractor extractor;
     DataBase db("../databases/DB_Teste.db");
+    const std::string file_path = "../generator/ordersCemMil.json";
+    TestResults results;
 
+    // Initialize triggers with simple void() callbacks
+    auto timer_trigger = std::make_shared<TimerTrigger>(5000);
+    auto request_trigger = std::make_shared<RequestTrigger>();
+
+    // Set up processing functions
+    auto processSequential = [&]() {
+        DataFrame<std::string> df = extractor.extractFromJson(file_path);
+        if (df.numRows() == 0) return;
+        
+        TestResults::RunStats stats;
+        processSequentialChunk(db, "ordersCemMil", df, stats);
+        results.sequentialRuns.push_back(stats);
+    };
+
+    auto processParallel = [&]() {
+        DataFrame<std::string> df = extractor.extractFromJson(file_path);
+        if (df.numRows() == 0) return;
+        
+        TestResults::RunStats stats;
+        processParallelChunk(8, db, "ordersCemMil", df, stats);
+        results.parallel8Runs.push_back(stats);
+    };
+
+    // Assign callbacks
+    timer_trigger->setCallback(processSequential);
+    request_trigger->setCallback(processParallel);
+
+    // Start triggers
     printTableHeader();
+    timer_trigger->start();
+    request_trigger->start();
 
-    // Criando um TimerTrigger que executa a cada 5 segundos (5000 ms)
-    TimerTrigger timerTrigger(5000);
-    timerTrigger.setCallback([&]() {
-        std::cout << "\nTimerTrigger iniciou uma nova execucao do pipeline\n";
-        
-        // Testes Sequenciais
-        for (size_t i = 0; i < arquivos.size(); ++i) {
-            testSequentialPipeline(db, arquivos[i], resultados[i].sequentialProcessingTime, resultados[i].sequentialLoadTime);
-        }
+    // Simulate random requests
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dist(1, 5);
 
-        // Testes Paralelos (4 threads)
-        for (size_t i = 0; i < arquivos.size(); ++i) {
-            testParallelPipeline(4, db, arquivos[i], resultados[i].parallel4ProcessingTime, resultados[i].parallel4LoadTime);
-        }
-
-        // Imprime a tabela final com os resultados
-        for (size_t i = 0; i < arquivos.size(); ++i) {
-            printTableRow(
-                arquivos[i],
-                resultados[i].sequentialProcessingTime,
-                resultados[i].sequentialLoadTime,
-                resultados[i].parallel4ProcessingTime,
-                resultados[i].parallel4LoadTime,
-                resultados[i].parallel8ProcessingTime,
-                resultados[i].parallel8LoadTime,
-                resultados[i].parallel12ProcessingTime,
-                resultados[i].parallel12LoadTime
-            );
-        }
-    });
-
-    // Criando um RequestTrigger
-    RequestTrigger requestTrigger;
-    requestTrigger.setCallback([&]() {
-        std::cout << "\nRequestTrigger iniciou uma nova execução do pipeline\n";
-        
-        // Testes Paralelos (8 threads)
-        for (size_t i = 0; i < arquivos.size(); ++i) {
-            testParallelPipeline(8, db, arquivos[i], resultados[i].parallel8ProcessingTime, resultados[i].parallel8LoadTime);
-        }
-    });
-
-    // Iniciando os triggers
-    timerTrigger.start();
-    requestTrigger.start();
-
-    // Simulando algumas requisições
     for (int i = 0; i < 3; ++i) {
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-        static_cast<RequestTrigger&>(requestTrigger).trigger();
+        std::this_thread::sleep_for(std::chrono::seconds(dist(gen)));
+        request_trigger->trigger();
     }
 
-    // Parando os triggers após 15 segundos
-    std::this_thread::sleep_for(std::chrono::seconds(15));
-    timerTrigger.stop();
-    requestTrigger.stop();
+    // Run for 30 seconds
+    std::this_thread::sleep_for(std::chrono::seconds(30));
+    timer_trigger->stop();
+    request_trigger->stop();
+
+    // Calculate and print aggregated results
+    auto calculateAverages = [](const std::vector<TestResults::RunStats>& runs) {
+        long totalProc = 0, totalLoad = 0;
+        size_t totalLines = 0;
+        for (const auto& run : runs) {
+            totalProc += run.processingTime;
+            totalLoad += run.loadTime;
+            totalLines += run.linesProcessed;
+        }
+        return std::make_tuple(
+            runs.empty() ? 0 : totalProc / runs.size(),
+            runs.empty() ? 0 : totalLoad / runs.size(),
+            totalLines
+        );
+    };
+
+    auto [avgSeqProc, avgSeqLoad, totalSeqLines] = calculateAverages(results.sequentialRuns);
+    auto [avgPar8Proc, avgPar8Load, totalPar8Lines] = calculateAverages(results.parallel8Runs);
+
+    printTableRow("ordersCemMil", 
+                avgSeqProc, avgSeqLoad,
+                0, 0, // Placeholder for parallel4
+                avgPar8Proc, avgPar8Load,
+                0, 0); // Placeholder for parallel12
+
+    std::cout << "\nTotal lines processed - Sequential: " << totalSeqLines 
+              << " | Parallel8: " << totalPar8Lines << "\n";
 }
 
 int main() {
-    Test();  // Executa os testes
+    Test();
     return 0;
 }

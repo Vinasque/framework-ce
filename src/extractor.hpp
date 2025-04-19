@@ -1,5 +1,4 @@
 #pragma once
-
 #include <string>
 #include "json.hpp"
 #include <fstream>
@@ -7,16 +6,21 @@
 #include "dataframe.hpp"
 #include "queue.hpp"
 #include <sqlite3.h>
+#include <mutex>
 
 class Extractor {
+private:
+    std::unordered_map<std::string, size_t> file_positions;
+    std::mutex position_mutex;
+
 public:
-    // Variável de Debug
     bool bDebugMode = true;
 
-    Extractor() = default;
-
-    // extrair dados de um JSON e retornar como DataFrame
-    DataFrame<std::string> extractFromJson(const std::string& filePath) {
+    // Modified to track position between extractions
+    DataFrame<std::string> extractFromJson(const std::string& filePath, size_t num_lines = 0) {
+        std::lock_guard<std::mutex> lock(position_mutex);
+        size_t& current_pos = file_positions[filePath];
+        
         try {
             std::ifstream file(filePath);
             if (!file.is_open()) {
@@ -26,17 +30,24 @@ public:
             nlohmann::json jsonData;
             file >> jsonData;
 
-            int totalRecords = jsonData.size();
-            // std::cout << "Total: " << totalRecords << std::endl;
-
             if (!jsonData.is_array()) {
                 throw std::runtime_error("JSON data should be an array of records");
             }
 
+            size_t total_records = jsonData.size();
+            if (current_pos >= total_records) {
+                return DataFrame<std::string>(); // Return empty DataFrame if no new data
+            }
+
+            // If num_lines is 0, process all remaining lines
+            size_t end_pos = (num_lines == 0) ? total_records : 
+                            std::min(current_pos + num_lines, total_records);
+
             std::vector<std::string> flightIds, seats, userIds, customerNames;
             std::vector<std::string> statuses, paymentMethods, reservationTimes, prices;
 
-            for (const auto& record : jsonData) {
+            for (size_t i = current_pos; i < end_pos; ++i) {
+                const auto& record = jsonData[i];
                 flightIds.push_back(record["flight_id"].get<std::string>());
                 seats.push_back(record["seat"].get<std::string>());
                 userIds.push_back(record["user_id"].get<std::string>());
@@ -51,6 +62,8 @@ public:
                     prices.push_back("0.0");
                 }
             }
+
+            current_pos = end_pos; // Update position for next extraction
 
             std::vector<std::string> columns = {
                 "flight_id", "seat", "user_id", "customer_name", 
@@ -74,6 +87,86 @@ public:
             throw;
         }
     }
+
+    // Updated partitioned extraction
+    void extractFromJsonPartitioned(const std::string& filePath, int numThreads, 
+                                   Queue<int, DataFrame<std::string>>& partitionQueue,
+                                   size_t num_lines = 0) {
+        std::lock_guard<std::mutex> lock(position_mutex);
+        size_t& current_pos = file_positions[filePath];
+        
+        try {
+            std::ifstream file(filePath);
+            if (!file.is_open()) {
+                throw std::runtime_error("Could not open the file: " + filePath);
+            }
+
+            nlohmann::json jsonData;
+            file >> jsonData;
+
+            if (!jsonData.is_array()) {
+                throw std::runtime_error("JSON data should be an array of records");
+            }
+
+            size_t total_records = jsonData.size();
+            if (current_pos >= total_records) {
+                return; // No new data
+            }
+
+            size_t end_pos = (num_lines == 0) ? total_records : 
+                           std::min(current_pos + num_lines, total_records);
+            size_t chunk_size = (end_pos - current_pos) / numThreads;
+
+            for (int i = 0; i < numThreads; ++i) {
+                size_t start = current_pos + i * chunk_size;
+                size_t end = (i == numThreads - 1) ? end_pos : start + chunk_size;
+
+                std::vector<std::string> flightIds, seats, userIds, customerNames;
+                std::vector<std::string> statuses, paymentMethods, reservationTimes, prices;
+
+                for (size_t j = start; j < end; ++j) {
+                    const auto& record = jsonData[j];
+                    flightIds.push_back(record["flight_id"].get<std::string>());
+                    seats.push_back(record["seat"].get<std::string>());
+                    userIds.push_back(record["user_id"].get<std::string>());
+                    customerNames.push_back(record["customer_name"].get<std::string>());
+                    statuses.push_back(record["status"].get<std::string>());
+                    paymentMethods.push_back(record["payment_method"].get<std::string>());
+                    reservationTimes.push_back(record["reservation_time"].get<std::string>());
+
+                    if (record.contains("price")) {
+                        prices.push_back(std::to_string(record["price"].get<double>()));
+                    } else {
+                        prices.push_back("0.0");
+                    }
+                }
+
+                std::vector<std::string> columns = {
+                    "flight_id", "seat", "user_id", "customer_name",
+                    "status", "payment_method", "reservation_time", "price"
+                };
+
+                std::vector<Series<std::string>> series = {
+                    Series<std::string>(flightIds),
+                    Series<std::string>(seats),
+                    Series<std::string>(userIds),
+                    Series<std::string>(customerNames),
+                    Series<std::string>(statuses),
+                    Series<std::string>(paymentMethods),
+                    Series<std::string>(reservationTimes),
+                    Series<std::string>(prices)
+                };
+
+                partitionQueue.enQueue({i, DataFrame<std::string>(columns, series)});
+            }
+
+            current_pos = end_pos;
+        } catch (const std::exception& e) {
+            std::cerr << "Extraction error: " << e.what() << std::endl;
+            throw;
+        }
+    }
+
 
     // Método para extrair dados de um arquivo CSV
     DataFrame<std::string> extractFromCsv(const std::string& filePath) {

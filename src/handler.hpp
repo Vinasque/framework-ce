@@ -64,44 +64,35 @@ public:
 };
 
 
-// Modified TriggerableHandler with proper declarations
 class TriggerableHandler : public BaseHandler {
-    protected:
-        std::shared_ptr<class Trigger> trigger;  // Use 'class Trigger' here
-    
-    public:
-        void setTrigger(std::shared_ptr<class Trigger> t) {  // And here
-            trigger = t;
-            if (trigger) {
-                trigger->setCallback([this]() {
-                    this->processNext();
-                });
+protected:
+    std::shared_ptr<Trigger> trigger;
+
+public:
+    void setTrigger(std::shared_ptr<Trigger> t) {
+        trigger = t;
+        if (trigger) {
+            trigger->setCallback([this]() {
+                this->processNext();
+            });
+        }
+    }
+
+    virtual void processNext() {
+        DataFrame<std::string> df;
+        {
+            std::unique_lock<std::mutex> lock(inputMutex);
+            if (!inputQueue.empty()) {
+                df = inputQueue.front();
+                inputQueue.pop();
             }
         }
-    
-        virtual void processNext() {
-            DataFrame<std::string> df;
-            {
-                std::unique_lock<std::mutex> lock(inputMutex);
-                if (!inputQueue.empty()) {
-                    df = inputQueue.front();
-                    inputQueue.pop();
-                }
-            }
-            
-            if (df.numRows() > 0) {
-                process(df);
-            }
+        
+        if (df.numRows() > 0) {
+            process(df);
         }
-    
-        void triggerNow() {
-            if (trigger) {
-                static_cast<class RequestTrigger*>(trigger.get())->trigger();
-            } else {
-                processNext();
-            }
-        }
-    };
+    }
+};
 
 // Handler de validação (exemplo de process)
 class ValidationHandler : public BaseHandler {

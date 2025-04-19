@@ -4,22 +4,18 @@
 #include <thread>
 #include <atomic>
 #include <memory>
-
-class Trigger;
-
-// Then include any headers that might be needed
 #include "dataframe.hpp"
 
 class Trigger {
 protected:
-    std::function<void()> callback;
+    std::function<void()> callback; // Changed to void()
     std::atomic<bool> running{false};
 
 public:
     virtual ~Trigger() = default;
     virtual void start() = 0;
     virtual void stop() = 0;
-    void setCallback(std::function<void()> cb) { callback = cb; }
+    void setCallback(std::function<void()> cb) { callback = cb; } // Changed to void()
 };
 
 class TimerTrigger : public Trigger {
@@ -36,7 +32,7 @@ public:
             while (running) {
                 std::this_thread::sleep_for(interval);
                 if (callback && running) {
-                    callback();
+                    callback(); // Now matches void() signature
                 }
             }
         });
@@ -48,25 +44,16 @@ public:
             timerThread.join();
         }
     }
-
-    ~TimerTrigger() {
-        stop();
-    }
 };
 
 class RequestTrigger : public Trigger {
 public:
-    void start() override {
-        running = true;
-    }
-
-    void stop() override {
-        running = false;
-    }
+    void start() override { running = true; }
+    void stop() override { running = false; }
 
     void trigger() {
         if (running && callback) {
-            callback();
+            callback(); // Now matches void() signature
         }
     }
 };
