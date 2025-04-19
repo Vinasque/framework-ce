@@ -1,4 +1,5 @@
 import json
+import csv
 import random
 from faker import Faker
 from datetime import datetime, timedelta
@@ -6,12 +7,34 @@ from datetime import datetime, timedelta
 faker = Faker()
 Faker.seed(42)
 
-def generate_flight_orders(n):
+def generate_flight_data(n):
+    flights = []
+    header = ["flight_id", "origin", "destination", "flight_date"]
+    flights.append(header)
+
+    for i in range(n):
+        # Escolhendo dados aleatoriamente
+        flight_id = f"AAA-{i}"
+        origin = faker.country()
+        destination = faker.country()
+        while destination == origin:  
+            destination = faker.country()
+        flight_datetime = faker.date_time_between(start_date="now", end_date="+600d")
+        flight_datetime = flight_datetime.replace(minute=0, second=0, microsecond=0)
+        flight_date = flight_datetime.isoformat()
+
+        flight = [flight_id, origin, destination, flight_date]
+
+        flights.append(flight)
+
+    return flights
+
+def generate_flight_orders(n, num_flights):
     orders = []
 
     for _ in range(n):
         # Escolhendo dados aleatoriamente
-        flight_id = random.choice([f"AAA-{i}" for i in range(1, 31)])
+        flight_id = random.choice([f"AAA-{i}" for i in range(1, num_flights)])
         seat = f"{random.randint(1, 40)}{random.choice(['A', 'B', 'C', 'D', 'E', 'F'])}"
         user_id = str(random.randint(10000, 99999))
         customer_name = faker.name()
@@ -35,6 +58,12 @@ def generate_flight_orders(n):
 
     return orders
 
-orders = generate_flight_orders(100000) 
+num_flights = 100
+flights = generate_flight_data(num_flights)
+with open("flightsCem.csv", "w", newline='', encoding='utf-8') as f:
+    writer = csv.writer(f)
+    writer.writerows(flights)
+
+orders = generate_flight_orders(100000, num_flights) 
 with open("ordersCemMil.json", "w") as f:
     json.dump(orders, f, indent=2)
