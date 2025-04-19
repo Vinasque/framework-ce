@@ -13,19 +13,22 @@
 #include <cmath>
 #include <map>
 #include <algorithm>
-#include "dataframe.hpp" 
+#include "dataframe.hpp"
 
-// BaseHandler agora lida com DataFrame
 class BaseHandler {
 protected:
-    std::queue<DataFrame<std::string>> inputQueue;  // Fila de DataFrame
+    std::queue<DataFrame<std::string>> inputQueue;
     std::mutex inputMutex;
     std::condition_variable cv;
     bool running = true;
 
 public:
-    // Modificado para aceitar e retornar um DataFrame
-    virtual DataFrame<std::string> process(DataFrame<std::string>& df) = 0;  
+    virtual DataFrame<std::string> process(DataFrame<std::string>& df) = 0;
+    
+    virtual std::vector<DataFrame<std::string>> processMulti(
+        const std::vector<DataFrame<std::string>>& inputDfs) {
+        return {};
+    }
 
     void stop() {
         running = false;
@@ -34,7 +37,6 @@ public:
 
     virtual ~BaseHandler() {}
 
-    // Função para rodar a execução dos handlers
     void run() {
         while (running) {
             std::unique_lock<std::mutex> lock(inputMutex);
@@ -46,16 +48,14 @@ public:
             inputQueue.pop();
             lock.unlock();
 
-            process(df);  // Processo do DataFrame
+            process(df);
         }
     }
 
-    // verificar status da thread
     bool isRunning() const {
         return running;
     }
 
-    // inserir na fila
     void addDataFrame(DataFrame<std::string>& df) {
         std::lock_guard<std::mutex> lock(inputMutex);
         inputQueue.push(df);
@@ -63,36 +63,31 @@ public:
     }
 };
 
-// Handler de validação (exemplo de process)
 class ValidationHandler : public BaseHandler {
-    public:
-        DataFrame<std::string> process(DataFrame<std::string>& df) override {
-
-            // Aqui, você pode processar o df como necessário. Por exemplo:
-            for (int i = 0; i < df.numRows(); ++i) {
-                if (df.getValue("flight_id", i).empty()) {
-                    df.deleteLine(i);  // Deleta a linha se flight_id for vazio
-                }
+public:
+    DataFrame<std::string> process(DataFrame<std::string>& df) override {
+        for (int i = 0; i < df.numRows(); ++i) {
+            if (df.getValue("flight_id", i).empty()) {
+                df.deleteLine(i);
             }
-            return df;  // Retorna o DataFrame modificado
         }
-    };
-    
+        return df;
+    }
+};
+
 class DateHandler : public BaseHandler {
 public:
     DataFrame<std::string> process(DataFrame<std::string>& df) override {
         for (int i = 0; i < df.numRows(); ++i) {
             std::string datetime = df.getValue("reservation_time", i);
             if (datetime.length() >= 10) {
-                std::string formattedDate = datetime.substr(0, 10);  // Formata a data
-                df.updateValue("reservation_time", i, formattedDate);  // Atualiza a célula no DataFrame
+                df.updateValue("reservation_time", i, datetime.substr(0, 10));
             }
         }
-        return df;  // Retorna o DataFrame modificado
+        return df;
     }
 };
 
-// Handler de cálculo de receita com groupby por data
 class RevenueHandler : public BaseHandler {
 private:
     double totalRevenue = 0.0;
@@ -100,18 +95,13 @@ private:
 
 public:
     DataFrame<std::string> process(DataFrame<std::string>& df) override {
-        // Agrupar pela coluna "reservation_time" (data) e somar os valores da coluna "price"
         DataFrame<std::string> groupedDf = df.groupby("reservation_time", "price");
-
-        // Calcular a receita total, somando os valores da coluna "price" para o status "confirmed"
         for (int i = 0; i < df.numRows(); ++i) {
-            std::string status = df.getValue("status", i);
-            if (status == "confirmed") {
+            if (df.getValue("status", i) == "confirmed") {
                 totalRevenue += std::stod(df.getValue("price", i));
             }
         }
-
-        return groupedDf;  // Retorna o DataFrame agrupado
+        return groupedDf;
     }
 
     double getTotalRevenue() const {
@@ -125,16 +115,10 @@ public:
     }
 };
 
-// Handler de cálculo de receita com groupby por data
 class CardRevenueHandler : public BaseHandler {
-private:
-    mutable std::mutex revenueMutex;
-
 public:
     DataFrame<std::string> process(DataFrame<std::string>& df) override {
-        // Agrupar pela coluna "reservation_time" (data) e somar os valores da coluna "price"
-        DataFrame<std::string> groupedDf = df.groupby("payment_method", "price");
-        return groupedDf;  // Retorna o DataFrame agrupado
+        return df.groupby("payment_method", "price");
     }
 };
 
@@ -151,12 +135,10 @@ public:
                 df.deleteLine(i);
             }
         }
-        
         return df;
     }
-};    
+};
 
-// funcao auxiliar que extrai o id do voo
 int extractFlightNumber(const std::string& flightId) {
     size_t dashPos = flightId.find('-');
     if (dashPos != std::string::npos && dashPos + 1 < flightId.size()) {
@@ -169,50 +151,63 @@ int extractFlightNumber(const std::string& flightId) {
     return -1;
 }
 
-
-// handler que extrai a origem e destino do voo de cada reserva
 class FlightInfoEnricherHandler : public BaseHandler {
 private:
     DataFrame<std::string> flightsDf;
-   
+
 public:
     FlightInfoEnricherHandler(const DataFrame<std::string>& flightsDf) : flightsDf(flightsDf) {}
-   
-    DataFrame<std::string> process(DataFrame<std::string>& df) override {
 
+    std::vector<DataFrame<std::string>> processMulti(
+        const std::vector<DataFrame<std::string>>& inputDfs) override {
+        
+        if (inputDfs.empty()) {
+            throw std::runtime_error("Input DataFrames vazio");
+        }
 
-        if (!df.columnExists("origin")) {
-            df.addColumn("origin", Series<std::string>::createEmpty(df.numRows(), ""));
+        DataFrame<std::string> reservationsDf = inputDfs[0];
+        
+        if (!reservationsDf.columnExists("origin")) {
+            reservationsDf.addColumn("origin", Series<std::string>::createEmpty(reservationsDf.numRows(), ""));
         }
-        if (!df.columnExists("destination")) {
-            df.addColumn("destination", Series<std::string>::createEmpty(df.numRows(), ""));
+        if (!reservationsDf.columnExists("destination")) {
+            reservationsDf.addColumn("destination", Series<std::string>::createEmpty(reservationsDf.numRows(), ""));
         }
-       
-        // para cada reserva:
-        for (int i = 0; i < df.numRows(); ++i) {
-            std::string reservationFlightId = df.getValue("flight_id", i);
-            int reservationFlightNum = extractFlightNumber(reservationFlightId);
-           
-            if (reservationFlightNum == -1) continue;
-           
-            // achar o voo
+
+        DataFrame<std::string> flightStatsDf;
+        flightStatsDf.addColumn("flight_number", Series<std::string>::createEmpty(0, ""));
+        flightStatsDf.addColumn("reservation_count", Series<std::string>::createEmpty(0, ""));
+        
+        std::unordered_map<int, int> flightCounts;
+
+        for (int i = 0; i < reservationsDf.numRows(); ++i) {
+            int flightNum = extractFlightNumber(reservationsDf.getValue("flight_id", i));
+            if (flightNum == -1) continue;
+
+            flightCounts[flightNum]++;
+            
             for (int j = 0; j < flightsDf.numRows(); ++j) {
-                std::string flightId = flightsDf.getValue("flight_id", j);
-                int flightNum = extractFlightNumber(flightId);
-               
-                if (flightNum == reservationFlightNum) {
-                    // pega os dados do voo correspondente
-                    df.updateValue("origin", i, flightsDf.getValue("from", j));
-                    df.updateValue("destination", i, flightsDf.getValue("to", j));
+                if (extractFlightNumber(flightsDf.getValue("flight_id", j)) == flightNum) {
+                    reservationsDf.updateValue("origin", i, flightsDf.getValue("from", j));
+                    reservationsDf.updateValue("destination", i, flightsDf.getValue("to", j));
                     break;
                 }
             }
         }
-       
-        return df;
+
+        for (const auto& [flightNum, count] : flightCounts) {
+            flightStatsDf.addLine({std::to_string(flightNum), std::to_string(count)});
+        }
+
+        return {reservationsDf, flightStatsDf};
+    }
+
+    DataFrame<std::string> process(DataFrame<std::string>& df) override {
+        auto results = processMulti({df});
+        return results[0];
     }
 };
-   
+
 class DestinationCounterHandler : public BaseHandler {
 public:
     DataFrame<std::string> process(DataFrame<std::string>& enrichedDf) override {
@@ -222,24 +217,20 @@ public:
             return resultDf;
         }
 
-
         std::map<std::string, int> destinationCount;
         for (int i = 0; i < enrichedDf.numRows(); ++i) {
             destinationCount[enrichedDf.getValue("destination", i)]++;
         }
-
 
         auto [mostCommon, count] = *std::max_element(
             destinationCount.begin(),
             destinationCount.end(),
             [](const auto& a, const auto& b) { return a.second < b.second; });
 
-
         resultDf.addColumn("most_common_destination",
             Series<std::string>::createEmpty(1, mostCommon));
         resultDf.addColumn("reservation_count",
             Series<std::string>::createEmpty(1, std::to_string(count)));
-
 
         return resultDf;
     }
