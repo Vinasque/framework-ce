@@ -7,17 +7,28 @@
 #include "queue.hpp"
 #include <sqlite3.h>
 #include <mutex>
+#include <random>
 
 class Extractor {
 private:
     std::unordered_map<std::string, size_t> file_positions;
     std::mutex position_mutex;
+    std::random_device rd;
+    std::mt19937 gen;
 
 public:
     bool bDebugMode = true;
+    
+    Extractor() : gen(rd()) {}
 
-    // Modified to track position between extractions
-    DataFrame<std::string> extractFromJson(const std::string& filePath, size_t num_lines = 0) {
+    // Reset file position for reprocessing
+    void resetFilePosition(const std::string& filePath) {
+        std::lock_guard<std::mutex> lock(position_mutex);
+        file_positions[filePath] = 0;
+    }
+
+    // Main extraction with chunking support
+    DataFrame<std::string> extractChunk(const std::string& filePath, size_t chunk_size = 0) {
         std::lock_guard<std::mutex> lock(position_mutex);
         size_t& current_pos = file_positions[filePath];
         
@@ -36,12 +47,12 @@ public:
 
             size_t total_records = jsonData.size();
             if (current_pos >= total_records) {
-                return DataFrame<std::string>(); // Return empty DataFrame if no new data
+                return DataFrame<std::string>(); // Return empty if no more data
             }
 
-            // If num_lines is 0, process all remaining lines
-            size_t end_pos = (num_lines == 0) ? total_records : 
-                            std::min(current_pos + num_lines, total_records);
+            // Process either specified chunk or remaining lines
+            size_t end_pos = (chunk_size == 0) ? total_records : 
+                           std::min(current_pos + chunk_size, total_records);
 
             std::vector<std::string> flightIds, seats, userIds, customerNames;
             std::vector<std::string> statuses, paymentMethods, reservationTimes, prices;
@@ -63,7 +74,7 @@ public:
                 }
             }
 
-            current_pos = end_pos; // Update position for next extraction
+            current_pos = end_pos; // Update position
 
             std::vector<std::string> columns = {
                 "flight_id", "seat", "user_id", "customer_name", 
@@ -88,10 +99,10 @@ public:
         }
     }
 
-    // Updated partitioned extraction
-    void extractFromJsonPartitioned(const std::string& filePath, int numThreads, 
-                                   Queue<int, DataFrame<std::string>>& partitionQueue,
-                                   size_t num_lines = 0) {
+    // Partitioned extraction for parallel processing
+    void extractPartitionedChunk(const std::string& filePath, int numThreads, 
+                               Queue<int, DataFrame<std::string>>& partitionQueue,
+                               size_t chunk_size = 0) {
         std::lock_guard<std::mutex> lock(position_mutex);
         size_t& current_pos = file_positions[filePath];
         
@@ -110,21 +121,22 @@ public:
 
             size_t total_records = jsonData.size();
             if (current_pos >= total_records) {
-                return; // No new data
+                return; // No more data
             }
 
-            size_t end_pos = (num_lines == 0) ? total_records : 
-                           std::min(current_pos + num_lines, total_records);
-            size_t chunk_size = (end_pos - current_pos) / numThreads;
+            size_t end_pos = (chunk_size == 0) ? total_records : 
+                           std::min(current_pos + chunk_size, total_records);
+            size_t records_remaining = end_pos - current_pos;
+            size_t per_thread = records_remaining / numThreads;
 
             for (int i = 0; i < numThreads; ++i) {
-                size_t start = current_pos + i * chunk_size;
-                size_t end = (i == numThreads - 1) ? end_pos : start + chunk_size;
+                size_t thread_start = current_pos + (i * per_thread);
+                size_t thread_end = (i == numThreads - 1) ? end_pos : thread_start + per_thread;
 
                 std::vector<std::string> flightIds, seats, userIds, customerNames;
                 std::vector<std::string> statuses, paymentMethods, reservationTimes, prices;
 
-                for (size_t j = start; j < end; ++j) {
+                for (size_t j = thread_start; j < thread_end; ++j) {
                     const auto& record = jsonData[j];
                     flightIds.push_back(record["flight_id"].get<std::string>());
                     seats.push_back(record["seat"].get<std::string>());
@@ -167,6 +179,11 @@ public:
         }
     }
 
+    // Random chunk generator for TimerTrigger
+    DataFrame<std::string> extractRandomChunk(const std::string& filePath, size_t min_lines = 100, size_t max_lines = 1000) {
+        std::uniform_int_distribution<size_t> dist(min_lines, max_lines);
+        return extractChunk(filePath, dist(gen));
+    }
 
     // Método para extrair dados de um arquivo CSV
     DataFrame<std::string> extractFromCsv(const std::string& filePath) {
