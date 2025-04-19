@@ -8,10 +8,10 @@ def read_data_from_sqlite(db_path):
     cursor = conn.cursor()
 
     # Executar as queries para pegar os dados da tabela
-    cursor.execute("SELECT payment_method, price FROM faturamentoMetodo")
+    cursor.execute("SELECT payment_method, price FROM faturamentoMetodoordersCemMil")
     payment_rows = cursor.fetchall()
 
-    cursor.execute("SELECT reservation_time, price FROM faturamento")
+    cursor.execute("SELECT reservation_time, price FROM faturamentoordersCemMil")
     date_rows = cursor.fetchall()
 
     conn.close()
@@ -68,7 +68,7 @@ def plot_revenue(dates, revenues, payment_methods, payment_revenues):
 # Função principal para executar o código
 def main():
     # Caminho para o banco de dados
-    db_path = '../src/earning.db'
+    db_path = 'databases/DB_Teste.db'
 
     # Ler os dados do banco de dados SQLite
     payment_methods, payment_revenues, dates, revenues = read_data_from_sqlite(db_path)
