@@ -4,11 +4,13 @@
 #include <iomanip>  // Para std::setw
 #include "dataframe.hpp"
 #include "extractor.hpp"
+#include "trigger.hpp"
 #include "handler.hpp"
 #include "database.h"
 #include "loader.hpp"
 #include "ThreadPool.hpp"
 #include "queue.hpp"
+
 
 using Clock = std::chrono::high_resolution_clock;
 
@@ -182,48 +184,69 @@ void testParallelPipeline(int numThreads, DataBase& db, std::string nomeArquivo,
 }
 
 // Função para executar todos os testes e imprimir os resultados
-void Test()
-{
+void Test() {
     std::vector<std::string> arquivos = {"ordersCemMil"};
     std::vector<TestResults> resultados(arquivos.size());
     DataBase db("../databases/DB_Teste.db");
 
     printTableHeader();
 
-    // Testes Sequenciais
-    for (size_t i = 0; i < arquivos.size(); ++i) {
-        testSequentialPipeline(db, arquivos[i], resultados[i].sequentialProcessingTime, resultados[i].sequentialLoadTime);
+    // Criando um TimerTrigger que executa a cada 5 segundos (5000 ms)
+    TimerTrigger timerTrigger(5000);
+    timerTrigger.setCallback([&]() {
+        std::cout << "\nTimerTrigger iniciou uma nova execucao do pipeline\n";
+        
+        // Testes Sequenciais
+        for (size_t i = 0; i < arquivos.size(); ++i) {
+            testSequentialPipeline(db, arquivos[i], resultados[i].sequentialProcessingTime, resultados[i].sequentialLoadTime);
+        }
+
+        // Testes Paralelos (4 threads)
+        for (size_t i = 0; i < arquivos.size(); ++i) {
+            testParallelPipeline(4, db, arquivos[i], resultados[i].parallel4ProcessingTime, resultados[i].parallel4LoadTime);
+        }
+
+        // Imprime a tabela final com os resultados
+        for (size_t i = 0; i < arquivos.size(); ++i) {
+            printTableRow(
+                arquivos[i],
+                resultados[i].sequentialProcessingTime,
+                resultados[i].sequentialLoadTime,
+                resultados[i].parallel4ProcessingTime,
+                resultados[i].parallel4LoadTime,
+                resultados[i].parallel8ProcessingTime,
+                resultados[i].parallel8LoadTime,
+                resultados[i].parallel12ProcessingTime,
+                resultados[i].parallel12LoadTime
+            );
+        }
+    });
+
+    // Criando um RequestTrigger
+    RequestTrigger requestTrigger;
+    requestTrigger.setCallback([&]() {
+        std::cout << "\nRequestTrigger iniciou uma nova execução do pipeline\n";
+        
+        // Testes Paralelos (8 threads)
+        for (size_t i = 0; i < arquivos.size(); ++i) {
+            testParallelPipeline(8, db, arquivos[i], resultados[i].parallel8ProcessingTime, resultados[i].parallel8LoadTime);
+        }
+    });
+
+    // Iniciando os triggers
+    timerTrigger.start();
+    requestTrigger.start();
+
+    // Simulando algumas requisições
+    for (int i = 0; i < 3; ++i) {
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+        static_cast<RequestTrigger&>(requestTrigger).trigger();
     }
 
-    // Testes Paralelos (4 threads)
-    for (size_t i = 0; i < arquivos.size(); ++i) {
-        testParallelPipeline(4, db, arquivos[i], resultados[i].parallel4ProcessingTime, resultados[i].parallel4LoadTime);
-    }
-
-    // Testes Paralelos (8 threads)
-    for (size_t i = 0; i < arquivos.size(); ++i) {
-        testParallelPipeline(8, db, arquivos[i], resultados[i].parallel8ProcessingTime, resultados[i].parallel8LoadTime);
-    }
-
-    // Testes Paralelos (12 threads)
-    for (size_t i = 0; i < arquivos.size(); ++i) {
-        testParallelPipeline(12, db, arquivos[i], resultados[i].parallel12ProcessingTime, resultados[i].parallel12LoadTime);
-    }
-
-    // Imprime a tabela final com os resultados
-    for (size_t i = 0; i < arquivos.size(); ++i) {
-        printTableRow(
-            arquivos[i],
-            resultados[i].sequentialProcessingTime,
-            resultados[i].sequentialLoadTime,
-            resultados[i].parallel4ProcessingTime,
-            resultados[i].parallel4LoadTime,
-            resultados[i].parallel8ProcessingTime,
-            resultados[i].parallel8LoadTime,
-            resultados[i].parallel12ProcessingTime,
-            resultados[i].parallel12LoadTime
-        );
-    }
+    // Parando os triggers após 15 segundos
+    std::this_thread::sleep_for(std::chrono::seconds(15));
+    timerTrigger.stop();
+    requestTrigger.stop();
 }
 
 int main() {

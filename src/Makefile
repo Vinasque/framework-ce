@@ -7,7 +7,7 @@ CPP_SOURCES = main2.cpp
 # Regra principal
 all:
 	gcc -Wno-unused-but-set-variable -I$(SQLITE_DIR) -c $(SQLITE_DIR)/sqlite3.c
-	g++ -I$(SQLITE_DIR) -I. $(CPP_SOURCES) sqlite3.o -o $(TARGET)
+	g++ -std=c++17 -I$(SQLITE_DIR) -I. $(CPP_SOURCES) sqlite3.o -o $(TARGET)
 
 # Limpeza
 clean:
