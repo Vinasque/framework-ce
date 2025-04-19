@@ -141,6 +141,27 @@ public:
         }
     }
 
+    void execute(const std::string& sql, const std::vector<std::string>& params = {}) {
+        std::lock_guard<std::mutex> lock(dbMutex);
+        sqlite3_stmt* stmt;
+        
+        if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+            std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
+            return;
+        }
+    
+        // Bind parameters
+        for (size_t i = 0; i < params.size(); ++i) {
+            sqlite3_bind_text(stmt, i+1, params[i].c_str(), -1, SQLITE_TRANSIENT);
+        }
+    
+        if (sqlite3_step(stmt) != SQLITE_DONE) {
+            std::cerr << "Failed to execute statement: " << sqlite3_errmsg(db) << std::endl;
+        }
+    
+        sqlite3_finalize(stmt);
+    }
+
 };
 
 #endif // DATABASE_H
