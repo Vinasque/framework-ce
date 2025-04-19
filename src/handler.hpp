@@ -11,6 +11,8 @@
 #include <iomanip>
 #include <sstream>
 #include <cmath>
+#include <map>
+#include <algorithm>
 #include "dataframe.hpp" 
 
 // BaseHandler agora lida com DataFrame
@@ -153,5 +155,78 @@ public:
         return df;
     }
 };    
+
+class FlightInfoEnricherHandler : public BaseHandler {
+private:
+    DataFrame<std::string>& flightsDf;
+
+public:
+    FlightInfoEnricherHandler(DataFrame<std::string>& flightsData) 
+        : flightsDf(flightsData) {}
+
+    DataFrame<std::string> process(DataFrame<std::string>& reservationsDf) override {
+        if (reservationsDf.numRows() == 0 || flightsDf.numRows() == 0) {
+            return reservationsDf;
+        }
+
+        if (!reservationsDf.columnExists("origin")) {
+            reservationsDf.addColumn("origin", 
+                Series<std::string>::createEmpty(reservationsDf.numRows(), ""));
+        }
+        if (!reservationsDf.columnExists("destination")) {
+            reservationsDf.addColumn("destination", 
+                Series<std::string>::createEmpty(reservationsDf.numRows(), ""));
+        }
+
+        for (int i = 0; i < reservationsDf.numRows(); ++i) {
+            std::string flightId = reservationsDf.getValue("flight_id", i);
+            bool found = false;
+
+            for (int j = 0; j < flightsDf.numRows(); ++j) {
+                if (flightsDf.getValue("flight_id", j) == flightId) {
+                    reservationsDf.updateValue("origin", i, flightsDf.getValue("origin", j));
+                    reservationsDf.updateValue("destination", i, flightsDf.getValue("destination", j));
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                reservationsDf.updateValue("origin", i, "UNKNOWN");
+                reservationsDf.updateValue("destination", i, "UNKNOWN");
+            }
+        }
+
+        return reservationsDf;
+    }
+};
+    
+class DestinationCounterHandler : public BaseHandler {
+public:
+    DataFrame<std::string> process(DataFrame<std::string>& enrichedDf) override {
+        DataFrame<std::string> resultDf;
+        
+        if (enrichedDf.numRows() == 0 || !enrichedDf.columnExists("destination")) {
+            return resultDf;
+        }
+
+        std::map<std::string, int> destinationCount;
+        for (int i = 0; i < enrichedDf.numRows(); ++i) {
+            destinationCount[enrichedDf.getValue("destination", i)]++;
+        }
+
+        auto [mostCommon, count] = *std::max_element(
+            destinationCount.begin(), 
+            destinationCount.end(),
+            [](const auto& a, const auto& b) { return a.second < b.second; });
+
+        resultDf.addColumn("most_common_destination", 
+            Series<std::string>::createEmpty(1, mostCommon));
+        resultDf.addColumn("reservation_count", 
+            Series<std::string>::createEmpty(1, std::to_string(count)));
+
+        return resultDf;
+    }
+};
 
 #endif // HANDLER_HPP
