@@ -15,7 +15,7 @@ using Clock = std::chrono::high_resolution_clock;
 // Função para imprimir o cabeçalho da tabela
 void printTableHeader() {
     std::cout << "\n------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
-    std::cout << "| Arquivo        | Seq. Process | Seq. Load | Par. (4) Process | Par. (4) Load | Par. (8) Process | Par. (8) Load | Par. (12) Process | Par. (12) Load |" << std::endl;
+    std::cout << "| Arquivo | Seq. Process | Seq. Load | Par. (4) Process | Par. (4) Load | Par. (8) Process | Par. (8) Load | Par. (12) Process | Par. (12) Load |" << std::endl;
     std::cout << "--------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
 }
 
