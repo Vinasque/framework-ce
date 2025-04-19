@@ -156,74 +156,90 @@ public:
     }
 };    
 
+// funcao auxiliar que extrai o id do voo
+int extractFlightNumber(const std::string& flightId) {
+    size_t dashPos = flightId.find('-');
+    if (dashPos != std::string::npos && dashPos + 1 < flightId.size()) {
+        try {
+            return std::stoi(flightId.substr(dashPos + 1));
+        } catch (...) {
+            return -1;
+        }
+    }
+    return -1;
+}
+
+
+// handler que extrai a origem e destino do voo de cada reserva
 class FlightInfoEnricherHandler : public BaseHandler {
 private:
-    DataFrame<std::string>& flightsDf;
-
+    DataFrame<std::string> flightsDf;
+   
 public:
-    FlightInfoEnricherHandler(DataFrame<std::string>& flightsData) 
-        : flightsDf(flightsData) {}
+    FlightInfoEnricherHandler(const DataFrame<std::string>& flightsDf) : flightsDf(flightsDf) {}
+   
+    DataFrame<std::string> process(DataFrame<std::string>& df) override {
 
-    DataFrame<std::string> process(DataFrame<std::string>& reservationsDf) override {
-        if (reservationsDf.numRows() == 0 || flightsDf.numRows() == 0) {
-            return reservationsDf;
+
+        if (!df.columnExists("origin")) {
+            df.addColumn("origin", Series<std::string>::createEmpty(df.numRows(), ""));
         }
-
-        if (!reservationsDf.columnExists("origin")) {
-            reservationsDf.addColumn("origin", 
-                Series<std::string>::createEmpty(reservationsDf.numRows(), ""));
+        if (!df.columnExists("destination")) {
+            df.addColumn("destination", Series<std::string>::createEmpty(df.numRows(), ""));
         }
-        if (!reservationsDf.columnExists("destination")) {
-            reservationsDf.addColumn("destination", 
-                Series<std::string>::createEmpty(reservationsDf.numRows(), ""));
-        }
-
-        for (int i = 0; i < reservationsDf.numRows(); ++i) {
-            std::string flightId = reservationsDf.getValue("flight_id", i);
-            bool found = false;
-
+       
+        // para cada reserva:
+        for (int i = 0; i < df.numRows(); ++i) {
+            std::string reservationFlightId = df.getValue("flight_id", i);
+            int reservationFlightNum = extractFlightNumber(reservationFlightId);
+           
+            if (reservationFlightNum == -1) continue;
+           
+            // achar o voo
             for (int j = 0; j < flightsDf.numRows(); ++j) {
-                if (flightsDf.getValue("flight_id", j) == flightId) {
-                    reservationsDf.updateValue("origin", i, flightsDf.getValue("origin", j));
-                    reservationsDf.updateValue("destination", i, flightsDf.getValue("destination", j));
-                    found = true;
+                std::string flightId = flightsDf.getValue("flight_id", j);
+                int flightNum = extractFlightNumber(flightId);
+               
+                if (flightNum == reservationFlightNum) {
+                    // pega os dados do voo correspondente
+                    df.updateValue("origin", i, flightsDf.getValue("from", j));
+                    df.updateValue("destination", i, flightsDf.getValue("to", j));
                     break;
                 }
             }
-
-            if (!found) {
-                reservationsDf.updateValue("origin", i, "UNKNOWN");
-                reservationsDf.updateValue("destination", i, "UNKNOWN");
-            }
         }
-
-        return reservationsDf;
+       
+        return df;
     }
 };
-    
+   
 class DestinationCounterHandler : public BaseHandler {
 public:
     DataFrame<std::string> process(DataFrame<std::string>& enrichedDf) override {
         DataFrame<std::string> resultDf;
-        
+       
         if (enrichedDf.numRows() == 0 || !enrichedDf.columnExists("destination")) {
             return resultDf;
         }
+
 
         std::map<std::string, int> destinationCount;
         for (int i = 0; i < enrichedDf.numRows(); ++i) {
             destinationCount[enrichedDf.getValue("destination", i)]++;
         }
 
+
         auto [mostCommon, count] = *std::max_element(
-            destinationCount.begin(), 
+            destinationCount.begin(),
             destinationCount.end(),
             [](const auto& a, const auto& b) { return a.second < b.second; });
 
-        resultDf.addColumn("most_common_destination", 
+
+        resultDf.addColumn("most_common_destination",
             Series<std::string>::createEmpty(1, mostCommon));
-        resultDf.addColumn("reservation_count", 
+        resultDf.addColumn("reservation_count",
             Series<std::string>::createEmpty(1, std::to_string(count)));
+
 
         return resultDf;
     }
