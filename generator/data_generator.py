@@ -1,69 +1,63 @@
+import pandas as pd
 import json
-import csv
 import random
 from faker import Faker
-from datetime import datetime, timedelta
+from datetime import datetime
 
 faker = Faker()
 Faker.seed(42)
 
-def generate_flight_data(n):
-    flights = []
-    header = ["flight_id", "origin", "destination", "flight_date"]
-    flights.append(header)
+# 1. Carregar os dados dos usuários
+df_users = pd.read_csv("generator/users.csv")
+user_map = df_users.set_index("user_id")["username"].to_dict()
+user_ids = list(user_map.keys())
 
-    for i in range(n):
-        # Escolhendo dados aleatoriamente
-        flight_id = f"AAA-{i}"
-        origin = faker.country()
-        destination = faker.country()
-        while destination == origin:  
-            destination = faker.country()
-        flight_datetime = faker.date_time_between(start_date="now", end_date="+600d")
-        flight_datetime = flight_datetime.replace(minute=0, second=0, microsecond=0)
-        flight_date = flight_datetime.isoformat()
+# 2. Carregar os assentos disponíveis
+df_seats = pd.read_csv("generator/flights_seats.csv")
+df_available_seats = df_seats[df_seats["taken"] == 0].copy()
 
-        flight = [flight_id, origin, destination, flight_date]
+# Verificar se há assentos suficientes
+assert len(df_available_seats) >= 100000, "Não há assentos disponíveis suficientes!"
 
-        flights.append(flight)
+# 3. Selecionar 100.000 assentos únicos (randomizados)
+sampled_seats = df_available_seats.sample(n=100000, replace=False).copy()
 
-    return flights
+# 4. Gerar pedidos
+orders = []
+for i, (_, seat_row) in enumerate(sampled_seats.iterrows()):
+    flight_id = seat_row["flight_id"]
+    seat = seat_row["seat"]
+    price = seat_row["price"]
+    user_id = random.choice(user_ids)
+    customer_name = user_map[user_id]  # Agora usamos o nome real do usuário
 
-def generate_flight_orders(n, num_flights):
-    orders = []
+    status = random.choices(
+        ["pending", "confirmed", "cancelled"],
+        weights=[0.05, 0.90, 0.05],
+        k=1
+    )[0]
 
-    for _ in range(n):
-        # Escolhendo dados aleatoriamente
-        flight_id = random.choice([f"AAA-{i}" for i in range(1, num_flights)])
-        seat = f"{random.randint(1, 40)}{random.choice(['A', 'B', 'C', 'D', 'E', 'F'])}"
-        user_id = str(random.randint(10000, 99999))
-        customer_name = faker.name()
-        status = random.choice(["pending", "confirmed", "cancelled"])
-        payment_method = random.choice(["credit_card", "debit_card", "paypal"])
-        reservation_time = faker.date_time_between(start_date = "-600d", end_date = "now").isoformat()
-        price = round(random.uniform(200.0, 2000.0), 2)
+    payment_method = random.choices(
+        ["credit_card", "debit_card", "pix", "paypal"],
+        weights=[0.46, 0.34, 0.17, 0.03],
+        k=1
+    )[0]
 
-        order = {
-            "flight_id": flight_id,
-            "seat": seat,
-            "user_id": user_id,
-            "customer_name": customer_name,
-            "status": status,
-            "payment_method": payment_method,
-            "reservation_time": reservation_time,
-            "price": price
-        }
+    reservation_time = faker.date_time_between(start_date="-600d", end_date="now").isoformat()
 
-        orders.append(order)
+    order = {
+        "flight_id": "AAA-" + str(flight_id),
+        "seat": seat,
+        "user_id": str(user_id),
+        "customer_name": customer_name,
+        "status": status,
+        "payment_method": payment_method,
+        "reservation_time": reservation_time,
+        "price": round(price, 2)
+    }
 
-    return orders
+    orders.append(order)
 
-num_flights = 100
-flights = generate_flight_data(num_flights)
-with open("flightsCem.csv", "w", newline='', encoding='utf-8') as f:
-    writer = csv.writer(f)
-    writer.writerows(flights)
-
-orders = generate_flight_orders(100000, num_flights) 
-with open("ordersCemMil.json", "w") as f:
+# 5. Salvar em JSON
+with open("generator/ordersCemMil.json", "w") as f:
     json.dump(orders, f, indent=2)
