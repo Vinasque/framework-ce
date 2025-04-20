@@ -240,18 +240,18 @@ void Test()
         processParallelChunk(12, db, "ordersCemMil", df, stats);
 
         results.allRuns.push_back(stats);
-    
+
         // Print to table with trigger type and line count
         printTableRow(stats.triggerType,
-                     stats.linesProcessed,
-                     stats.sequentialProcessingTime,
-                     stats.sequentialLoadTime,
-                     stats.parallel4ProcessingTime,
-                     stats.parallel4LoadTime,
-                     stats.parallel8ProcessingTime,
-                     stats.parallel8LoadTime,
-                     stats.parallel12ProcessingTime,
-                     stats.parallel12LoadTime);
+                      stats.linesProcessed,
+                      stats.sequentialProcessingTime,
+                      stats.sequentialLoadTime,
+                      stats.parallel4ProcessingTime,
+                      stats.parallel4LoadTime,
+                      stats.parallel8ProcessingTime,
+                      stats.parallel8LoadTime,
+                      stats.parallel12ProcessingTime,
+                      stats.parallel12LoadTime);
     };
 
     // TimerTrigger - processes random chunks (100-1000 lines) every 5 seconds
