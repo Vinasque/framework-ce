@@ -21,9 +21,9 @@ std::mutex table_mutex;
 void printTableHeader()
 {
     std::lock_guard<std::mutex> lock(table_mutex);
-    std::cout << "\n------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
-    std::cout << "| Arquivo        | Seq. Process | Seq. Load | Par. (4) Process | Par. (4) Load | Par. (8) Process | Par. (8) Load | Par. (12) Process | Par. (12) Load |" << std::endl;
-    std::cout << "--------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
+    std::cout << "\n------------------------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
+    std::cout << "| Trigger   | Lines | Seq. Process | Seq. Load | Par. (4) Process | Par. (4) Load | Par. (8) Process | Par. (8) Load | Par. (12) Process | Par. (12) Load |" << std::endl;
+    std::cout << "------------------------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
 }
 
 void printTableRow(const std::string &triggerType, size_t linesProcessed,
@@ -33,7 +33,8 @@ void printTableRow(const std::string &triggerType, size_t linesProcessed,
                    const long &par12Proc, const long &par12Load)
 {
     std::lock_guard<std::mutex> lock(table_mutex);
-    std::cout << "| " << std::setw(14) << std::left << nomeArquivo
+    std::cout << "| " << std::setw(9) << std::left << triggerType
+              << " | " << std::setw(5) << std::right << linesProcessed
               << " | " << std::setw(12) << std::right << seqProc
               << " | " << std::setw(9) << std::right << seqLoad
               << " | " << std::setw(16) << std::right << par4Proc
@@ -43,7 +44,7 @@ void printTableRow(const std::string &triggerType, size_t linesProcessed,
               << " | " << std::setw(16) << std::right << par12Proc
               << " | " << std::setw(13) << std::right << par12Load
               << " |" << std::endl;
-    std::cout << "--------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
+    std::cout << "------------------------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
 }
 
 struct TestResults
