@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <stdexcept>
 #include <map>
+#include <algorithm>
 #include "series.hpp"
 
 template <typename T>
@@ -55,6 +56,10 @@ public:
         columns.erase(columns.begin() + column);
         series.erase(series.begin() + column);
         shape.second = series.size(); 
+    }
+
+    bool columnExists(const std::string& colName) const {
+        return std::find(columns.begin(), columns.end(), colName) != columns.end();
     }
 
     // adicionar linha ao DataFrame
