@@ -1,4 +1,3 @@
-// handler.hpp
 #ifndef HANDLER_HPP
 #define HANDLER_HPP
 
@@ -12,6 +11,7 @@
 #include <sstream>
 #include <cmath>
 #include <map>
+#include <unordered_map>
 #include <algorithm>
 #include "dataframe.hpp"
 
@@ -27,7 +27,7 @@ protected:
 
 public:
     virtual DataFrame<std::string> process(DataFrame<std::string>& df) = 0;
-    
+
     virtual std::vector<DataFrame<std::string>> processMulti(
         const std::vector<DataFrame<std::string>>& inputDfs) {
         return {};
@@ -90,14 +90,13 @@ public:
                 inputQueue.pop();
             }
         }
-        
+
         if (df.numRows() > 0) {
             process(df);
         }
     }
 };
 
-// Handler de validação (exemplo de process)
 class ValidationHandler : public BaseHandler {
 public:
     DataFrame<std::string> process(DataFrame<std::string>& df) override {
@@ -160,10 +159,10 @@ public:
 class StatusFilterHandler : public BaseHandler {
 private:
     std::string targetStatus;
-    
+
 public:
     StatusFilterHandler(const std::string& status) : targetStatus(status) {}
-    
+
     DataFrame<std::string> process(DataFrame<std::string>& df) override {
         for (int i = df.numRows() - 1; i >= 0; --i) {
             if (df.getValue("status", i) != targetStatus) {
@@ -193,15 +192,13 @@ private:
 public:
     FlightInfoEnricherHandler(const DataFrame<std::string>& flightsDf) : flightsDf(flightsDf) {}
 
-    std::vector<DataFrame<std::string>> processMulti(
-        const std::vector<DataFrame<std::string>>& inputDfs) override {
-        
+    std::vector<DataFrame<std::string>> processMulti(const std::vector<DataFrame<std::string>>& inputDfs) override {
         if (inputDfs.empty()) {
             throw std::runtime_error("Input DataFrames vazio");
         }
 
         DataFrame<std::string> reservationsDf = inputDfs[0];
-        
+
         if (!reservationsDf.columnExists("origin")) {
             reservationsDf.addColumn("origin", Series<std::string>::createEmpty(reservationsDf.numRows(), ""));
         }
@@ -212,7 +209,7 @@ public:
         DataFrame<std::string> flightStatsDf;
         flightStatsDf.addColumn("flight_number", Series<std::string>::createEmpty(0, ""));
         flightStatsDf.addColumn("reservation_count", Series<std::string>::createEmpty(0, ""));
-        
+
         std::unordered_map<int, int> flightCounts;
 
         for (int i = 0; i < reservationsDf.numRows(); ++i) {
@@ -220,7 +217,7 @@ public:
             if (flightNum == -1) continue;
 
             flightCounts[flightNum]++;
-            
+
             for (int j = 0; j < flightsDf.numRows(); ++j) {
                 if (extractFlightNumber(flightsDf.getValue("flight_id", j)) == flightNum) {
                     reservationsDf.updateValue("origin", i, flightsDf.getValue("from", j));
@@ -247,7 +244,7 @@ class DestinationCounterHandler : public BaseHandler {
 public:
     DataFrame<std::string> process(DataFrame<std::string>& enrichedDf) override {
         DataFrame<std::string> resultDf;
-       
+
         if (enrichedDf.numRows() == 0 || !enrichedDf.columnExists("destination")) {
             return resultDf;
         }
@@ -272,47 +269,67 @@ public:
 };
 
 class UsersCountryRevenue : public BaseHandler {
-private:
-    mutable std::mutex revenueMutex;
-    DataFrame<std::string> users_df;
-
-public:
-    UsersCountryRevenue(const DataFrame<std::string>& users) : users_df(users) {}
-
-    DataFrame<std::string> process(DataFrame<std::string>& df) override {
-        // Mapeamento de user_id para país
-        std::unordered_map<std::string, std::string> userIdToCountry;
-        for (int i = 0; i < users_df.numRows(); ++i) {
-            userIdToCountry[users_df.getValue("user_id", i)] = users_df.getValue("country", i);
-        }
-
-        // Preparar novas séries para colunas desejadas
-        Series<std::string> flight_ids;
-        Series<std::string> seats;
-        Series<std::string> countries;
-        Series<std::string> prices;
-
-        for (int i = 0; i < df.numRows(); ++i) {
-            std::string userId = df.getValue("user_id", i);
-            std::string country = userIdToCountry.count(userId) ? userIdToCountry[userId] : "Unknown";
-
-            flight_ids.addElement(df.getValue("flight_id", i));
-            seats.addElement(df.getValue("seat", i));
-            countries.addElement(country);
-            prices.addElement(df.getValue("price", i));
-        }
-
-        // Criar novo DataFrame com colunas desejadas
-        DataFrame<std::string> enrichedDf(
-            {"flight_id", "seat", "user_country", "price"},
-            {flight_ids, seats, countries, prices}
-        );
-
-        // Agrupamento por país
-        DataFrame<std::string> groupedDf = enrichedDf.groupby("user_country", "price");
-        return groupedDf;
-    }
-};
+    private:
+        const std::unordered_map<std::string, std::string>& userIdToCountry;
     
+    public:
+        UsersCountryRevenue(const std::unordered_map<std::string, std::string>& map)
+            : userIdToCountry(map) {}
+    
+        DataFrame<std::string> process(DataFrame<std::string>& df) override {
+            Series<std::string> flight_ids, seats, countries, prices;
+    
+            for (int i = 0; i < df.numRows(); ++i) {
+                std::string userId = df.getValue("user_id", i);
+                std::string country = userIdToCountry.count(userId) ? userIdToCountry.at(userId) : "Unknown";
+    
+                flight_ids.addElement(df.getValue("flight_id", i));
+                seats.addElement(df.getValue("seat", i));
+                countries.addElement(country);
+                prices.addElement(df.getValue("price", i));
+            }
+    
+            DataFrame<std::string> enrichedDf(
+                {"flight_id", "seat", "user_country", "price"},
+                {flight_ids, seats, countries, prices}
+            );
+    
+            return enrichedDf.groupby("user_country", "price");
+        }
+    };
+    
+
+    class SeatTypeRevenue : public BaseHandler {
+        private:
+            const std::unordered_map<std::string, std::string>& seatKeyToClass;
+        
+        public:
+            SeatTypeRevenue(const std::unordered_map<std::string, std::string>& map)
+                : seatKeyToClass(map) {}
+        
+            DataFrame<std::string> process(DataFrame<std::string>& df) override {
+                Series<std::string> flight_ids, seats, seat_types, prices;
+        
+                for (int i = 0; i < df.numRows(); ++i) {
+                    std::string flightId = df.getValue("flight_id", i);
+                    std::string seat = df.getValue("seat", i);
+                    std::string key = flightId + "_" + seat;
+                    std::string seatType = seatKeyToClass.count(key) ? seatKeyToClass.at(key) : "Desconhecido";
+        
+                    flight_ids.addElement(flightId);
+                    seats.addElement(seat);
+                    seat_types.addElement(seatType);
+                    prices.addElement(df.getValue("price", i));
+                }
+        
+                DataFrame<std::string> enrichedDf(
+                    {"flight_id", "seat", "seat_type", "price"},
+                    {flight_ids, seats, seat_types, prices}
+                );
+        
+                return enrichedDf.groupby("seat_type", "price");
+            }
+        };
+        
 
 #endif // HANDLER_HPP

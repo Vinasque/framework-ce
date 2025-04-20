@@ -17,10 +17,10 @@ df_seats = pd.read_csv("generator/flights_seats.csv")
 df_available_seats = df_seats[df_seats["taken"] == 0].copy()
 
 # Verificar se há assentos suficientes
-assert len(df_available_seats) >= 100000, "Não há assentos disponíveis suficientes!"
+assert len(df_available_seats) >= 190000, "Não há assentos disponíveis suficientes!"
 
 # 3. Selecionar 100.000 assentos únicos (randomizados)
-sampled_seats = df_available_seats.sample(n=100000, replace=False).copy()
+sampled_seats = df_available_seats.sample(n=190000, replace=False).copy()
 
 # 4. Gerar pedidos
 orders = []
