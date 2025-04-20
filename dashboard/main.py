@@ -16,6 +16,9 @@ def read_data_from_sqlite(db_path):
     
     cursor.execute("SELECT user_country, price FROM faturamentoPaisUsuario_ordersCemMil_4")
     userC_rows = cursor.fetchall()
+    
+    cursor.execute("SELECT seat_type, price FROM faturamentoTipoAssento_ordersCemMil_4")
+    seatT_rows = cursor.fetchall()
 
     conn.close()
 
@@ -30,13 +33,17 @@ def read_data_from_sqlite(db_path):
     # Dados por país do usuário
     countries = [row[0] for row in userC_rows]
     country_revenues = [row[1] for row in userC_rows]
+    
+    # Dados por país do usuário
+    seat_types = [row[0] for row in seatT_rows]
+    seat_revenues = [row[1] for row in seatT_rows]
 
-    return payment_methods, payment_revenues, dates, revenues, countries, country_revenues
+    return payment_methods, payment_revenues, dates, revenues, countries, country_revenues, seat_types, seat_revenues
 
 # Função para plotar os gráficos
-def plot_revenue(dates, revenues, payment_methods, payment_revenues, countries, country_revenues):
+def plot_revenue(dates, revenues, payment_methods, payment_revenues, countries, country_revenues, seat_types, seat_revenues):
     # Criando subplots: 1 linha e 3 colunas
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
+    fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(18, 6))
 
     # Gráfico 1: Receita diária
     ax1.plot(dates, revenues, marker='o', linestyle='-', color='b', label='Receita Diária')
@@ -66,6 +73,15 @@ def plot_revenue(dates, revenues, payment_methods, payment_revenues, countries, 
     ax3.tick_params(axis='x', rotation=45)
     ax3.grid(True, axis='y', linestyle='--', linewidth=0.5)
     ax3.legend(['Receita por País'], fontsize=9)
+    
+    # Gráfico 4: Receita por tipo de assento
+    ax4.bar(seat_types, seat_revenues, color='orange', alpha=0.7)
+    ax4.set_xlabel('Tipo de Assento', fontsize=10)
+    ax4.set_ylabel('Receita (R$)', fontsize=10)
+    ax4.set_title('Receita por Tipo de Assento', fontsize=12)
+    ax4.tick_params(axis='x', rotation=45)
+    ax4.grid(True, axis='y', linestyle='--', linewidth=0.5)
+    ax4.legend(['Receita por Assento'], fontsize=9)
 
     plt.tight_layout()
     plt.show()
@@ -73,8 +89,8 @@ def plot_revenue(dates, revenues, payment_methods, payment_revenues, countries, 
 # Função principal
 def main():
     db_path = 'databases/DB_Teste.db'
-    payment_methods, payment_revenues, dates, revenues, countries, country_revenues = read_data_from_sqlite(db_path)
-    plot_revenue(dates, revenues, payment_methods, payment_revenues, countries, country_revenues)
+    payment_methods, payment_revenues, dates, revenues, countries, country_revenues, seat_types, seat_revenues = read_data_from_sqlite(db_path)
+    plot_revenue(dates, revenues, payment_methods, payment_revenues, countries, country_revenues, seat_types, seat_revenues)
 
 if __name__ == "__main__":
     main()

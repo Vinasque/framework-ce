@@ -299,37 +299,49 @@ class UsersCountryRevenue : public BaseHandler {
     };
     
 
-    class SeatTypeRevenue : public BaseHandler {
-        private:
-            const std::unordered_map<std::string, std::string>& seatKeyToClass;
-        
-        public:
-            SeatTypeRevenue(const std::unordered_map<std::string, std::string>& map)
-                : seatKeyToClass(map) {}
-        
-            DataFrame<std::string> process(DataFrame<std::string>& df) override {
-                Series<std::string> flight_ids, seats, seat_types, prices;
-        
-                for (int i = 0; i < df.numRows(); ++i) {
-                    std::string flightId = df.getValue("flight_id", i);
-                    std::string seat = df.getValue("seat", i);
-                    std::string key = flightId + "_" + seat;
-                    std::string seatType = seatKeyToClass.count(key) ? seatKeyToClass.at(key) : "Desconhecido";
-        
-                    flight_ids.addElement(flightId);
-                    seats.addElement(seat);
-                    seat_types.addElement(seatType);
-                    prices.addElement(df.getValue("price", i));
-                }
-        
-                DataFrame<std::string> enrichedDf(
-                    {"flight_id", "seat", "seat_type", "price"},
-                    {flight_ids, seats, seat_types, prices}
-                );
-        
-                return enrichedDf.groupby("seat_type", "price");
+class SeatTypeRevenue : public BaseHandler {
+private:
+    const std::unordered_map<std::string, std::string>& seatKeyToClass;
+
+public:
+    SeatTypeRevenue(const std::unordered_map<std::string, std::string>& map)
+        : seatKeyToClass(map) {}
+
+    DataFrame<std::string> process(DataFrame<std::string>& df) override {
+        Series<std::string> flight_ids, seats, seat_types, prices;
+
+        // Prefixo a ser removido
+        const std::string flightPrefix = "AAA-"; 
+
+        for (int i = 0; i < df.numRows(); ++i) {
+            std::string flightId = df.getValue("flight_id", i);
+            std::string seat = df.getValue("seat", i);
+
+            // Remove o prefixo "AAA-" do flight_id
+            if (flightId.find(flightPrefix) == 0) {
+                flightId = flightId.substr(flightPrefix.length()); 
             }
-        };
-        
+
+            // Formar a chave completa
+            std::string key = flightId + "_" + seat;
+
+            // Verificar se a chave está no mapa
+            std::string seatType = seatKeyToClass.count(key) ? seatKeyToClass.at(key) : "Econômica";
+
+            flight_ids.addElement(flightId);
+            seats.addElement(seat);
+            seat_types.addElement(seatType);
+            prices.addElement(df.getValue("price", i));
+        }
+
+        DataFrame<std::string> enrichedDf(
+            {"flight_id", "seat", "seat_type", "price"},
+            {flight_ids, seats, seat_types, prices}
+        );
+
+        return enrichedDf.groupby("seat_type", "price");
+    }
+};
+
 
 #endif // HANDLER_HPP
