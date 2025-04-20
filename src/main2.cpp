@@ -111,19 +111,23 @@ void processSequentialChunk(DataBase &db, const std::string &nomeArquivo,
 }
 
 void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeArquivo,
-                          DataFrame<std::string> &df,
-                          TestResults::RunStats &stats)
+    DataFrame<std::string> &df,
+    TestResults::RunStats &stats)
 {
     auto start = Clock::now();
 
-    // Create tables
+    Extractor extractor;
+    DataFrame<std::string> users_df = extractor.extractFromCsv("../generator/users.csv");
+
     std::string tableSuffix = "_" + nomeArquivo + "_" + std::to_string(numThreads);
     db.createTable("faturamento" + tableSuffix, "(reservation_time TEXT PRIMARY KEY, price REAL)");
     db.createTable("faturamentoMetodo" + tableSuffix, "(payment_method TEXT PRIMARY KEY, price REAL)");
+    db.createTable("faturamentoPaisUsuario" + tableSuffix, "(user_country TEXT PRIMARY KEY, price REAL)");
 
     ThreadPool pool(numThreads);
     Queue<int, DataFrame<std::string>> partitionQueue(numThreads);
     Queue<int, DataFrame<std::string>> processedQueue(numThreads);
+    Queue<int, DataFrame<std::string>> userCountryQueue(numThreads);
 
     // Partition the data
     size_t chunk_size = df.numRows() / numThreads;
@@ -144,35 +148,44 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
 
     for (int i = 0; i < numThreads; ++i)
     {
-        processingFutures.push_back(pool.addTask([&]()
-                                                 {
-        auto [idx, chunk] = partitionQueue.deQueue();
-        auto processed = validationHandler.process(chunk);
-        processed = statusFilterHandler.process(processed);
-        processed = dateHandler.process(processed);
-        processedQueue.enQueue({idx, processed}); }));
+        processingFutures.push_back(pool.addTask([&, i]()
+        {
+            auto [idx, chunk] = partitionQueue.deQueue();
+            auto processed = validationHandler.process(chunk);
+            processed = statusFilterHandler.process(processed);
+            processed = dateHandler.process(processed);
+
+            // Apply UsersCountryRevenue locally (each thread makes its own handler)
+            UsersCountryRevenue localUserHandler(users_df);
+            DataFrame<std::string> countryRevenue = localUserHandler.process(processed);
+
+            // Store intermediate results in queues
+            processedQueue.enQueue({idx, processed});
+            userCountryQueue.enQueue({idx, countryRevenue});
+        }));
     }
 
     for (auto &fut : processingFutures)
-        fut.get();
+    fut.get();
     auto endProcessing = Clock::now();
 
-    // Aggregate all processed data first
+    // Aggregate all processed data
     DataFrame<std::string> allProcessed;
     for (int i = 0; i < numThreads; ++i)
     {
         auto [idx, processed] = processedQueue.deQueue();
-        if (allProcessed.numRows() == 0)
-        {
-            allProcessed = processed;
-        }
-        else
-        {
-            allProcessed = allProcessed.concat(processed);
-        }
+        allProcessed = (i == 0) ? processed : allProcessed.concat(processed);
     }
 
-    // Now apply revenue and card handlers to the aggregated data
+    // Aggregate user country data
+    DataFrame<std::string> allUserCountry;
+    for (int i = 0; i < numThreads; ++i)
+    {
+        auto [idx, countryDf] = userCountryQueue.deQueue();
+        allUserCountry = (i == 0) ? countryDf : allUserCountry.concat(countryDf);
+    }
+
+    // Final aggregation phase
     auto startAggregation = Clock::now();
     RevenueHandler revenueHandler;
     CardRevenueHandler cardHandler;
@@ -180,38 +193,41 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
     DataFrame<std::string> revenue = revenueHandler.process(allProcessed);
     DataFrame<std::string> cards = cardHandler.process(allProcessed);
 
-    // Group and sum the results
     auto aggregatedRevenue = revenue.groupby("reservation_time", "price");
     auto aggregatedCards = cards.groupby("payment_method", "price");
+
+    // Agrupar dados de país (já processados no handler)
+    DataFrame<std::string> aggregatedUserCountry = allUserCountry.groupby("user_country", "price");
     auto endAggregation = Clock::now();
 
-    // Single load operation
+    // Load all data into DB
     Loader loader(db);
     auto startLoad = Clock::now();
     loader.loadData("faturamento" + tableSuffix, aggregatedRevenue, {"reservation_time", "price"}, false);
     loader.loadData("faturamentoMetodo" + tableSuffix, aggregatedCards, {"payment_method", "price"}, false);
+    loader.loadData("faturamentoPaisUsuario" + tableSuffix, aggregatedUserCountry, {"user_country", "price"}, false);
     auto endLoad = Clock::now();
 
-    // Update stats
     long aggregationTime = std::chrono::duration_cast<std::chrono::milliseconds>(endAggregation - startAggregation).count();
     long processingTime = std::chrono::duration_cast<std::chrono::milliseconds>(endProcessing - startProcessing).count();
 
     switch (numThreads)
     {
-    case 4:
+        case 4:
         stats.parallel4ProcessingTime = processingTime + aggregationTime;
         stats.parallel4LoadTime = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad).count();
-        break;
-    case 8:
+    break;
+        case 8:
         stats.parallel8ProcessingTime = processingTime + aggregationTime;
         stats.parallel8LoadTime = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad).count();
-        break;
-    case 12:
+    break;
+        case 12:
         stats.parallel12ProcessingTime = processingTime + aggregationTime;
         stats.parallel12LoadTime = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad).count();
-        break;
+    break;
     }
 }
+
 
 void Test()
 {

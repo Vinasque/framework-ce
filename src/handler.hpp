@@ -271,4 +271,48 @@ public:
     }
 };
 
+class UsersCountryRevenue : public BaseHandler {
+private:
+    mutable std::mutex revenueMutex;
+    DataFrame<std::string> users_df;
+
+public:
+    UsersCountryRevenue(const DataFrame<std::string>& users) : users_df(users) {}
+
+    DataFrame<std::string> process(DataFrame<std::string>& df) override {
+        // Mapeamento de user_id para país
+        std::unordered_map<std::string, std::string> userIdToCountry;
+        for (int i = 0; i < users_df.numRows(); ++i) {
+            userIdToCountry[users_df.getValue("user_id", i)] = users_df.getValue("country", i);
+        }
+
+        // Preparar novas séries para colunas desejadas
+        Series<std::string> flight_ids;
+        Series<std::string> seats;
+        Series<std::string> countries;
+        Series<std::string> prices;
+
+        for (int i = 0; i < df.numRows(); ++i) {
+            std::string userId = df.getValue("user_id", i);
+            std::string country = userIdToCountry.count(userId) ? userIdToCountry[userId] : "Unknown";
+
+            flight_ids.addElement(df.getValue("flight_id", i));
+            seats.addElement(df.getValue("seat", i));
+            countries.addElement(country);
+            prices.addElement(df.getValue("price", i));
+        }
+
+        // Criar novo DataFrame com colunas desejadas
+        DataFrame<std::string> enrichedDf(
+            {"flight_id", "seat", "user_country", "price"},
+            {flight_ids, seats, countries, prices}
+        );
+
+        // Agrupamento por país
+        DataFrame<std::string> groupedDf = enrichedDf.groupby("user_country", "price");
+        return groupedDf;
+    }
+};
+    
+
 #endif // HANDLER_HPP
