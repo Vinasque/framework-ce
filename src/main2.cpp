@@ -20,19 +20,18 @@ std::mutex table_mutex;
 
 void printTableHeader() {
     std::lock_guard<std::mutex> lock(table_mutex);
-    std::cout << "\n------------------------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
-    std::cout << "| Trigger   | Lines | Seq. Process | Seq. Load | Par. (4) Process | Par. (4) Load | Par. (8) Process | Par. (8) Load | Par. (12) Process | Par. (12) Load |" << std::endl;
-    std::cout << "------------------------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
+    std::cout << "\n------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
+    std::cout << "| Arquivo        | Seq. Process | Seq. Load | Par. (4) Process | Par. (4) Load | Par. (8) Process | Par. (8) Load | Par. (12) Process | Par. (12) Load |" << std::endl;
+    std::cout << "--------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
 }
 
-void printTableRow(const std::string& triggerType, size_t linesProcessed,
+void printTableRow(const std::string& nomeArquivo, 
                  const long& seqProc, const long& seqLoad,
                  const long& par4Proc, const long& par4Load,
                  const long& par8Proc, const long& par8Load,
                  const long& par12Proc, const long& par12Load) {
     std::lock_guard<std::mutex> lock(table_mutex);
-    std::cout << "| " << std::setw(9) << std::left << triggerType
-              << " | " << std::setw(5) << std::right << linesProcessed
+    std::cout << "| " << std::setw(14) << std::left << nomeArquivo
               << " | " << std::setw(12) << std::right << seqProc
               << " | " << std::setw(9) << std::right << seqLoad
               << " | " << std::setw(16) << std::right << par4Proc
@@ -42,7 +41,7 @@ void printTableRow(const std::string& triggerType, size_t linesProcessed,
               << " | " << std::setw(16) << std::right << par12Proc
               << " | " << std::setw(13) << std::right << par12Load
               << " |" << std::endl;
-    std::cout << "------------------------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
+    std::cout << "--------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
 }
 
 struct TestResults {
@@ -197,22 +196,21 @@ void Test() {
             extractor.resetFilePosition(file_path);
             return;
         }
-    
+
         TestResults::RunStats stats;
         stats.triggerType = triggerType;
         stats.linesProcessed = df.numRows();
-    
+
         // Run all pipeline variants
         processSequentialChunk(db, "ordersCemMil", df, stats);
         processParallelChunk(4, db, "ordersCemMil", df, stats);
         processParallelChunk(8, db, "ordersCemMil", df, stats);
         processParallelChunk(12, db, "ordersCemMil", df, stats);
-    
+
         results.allRuns.push_back(stats);
-    
-        // Print to table with trigger type and line count
-        printTableRow(stats.triggerType,
-                     stats.linesProcessed,
+
+        // Print to table
+        printTableRow("ordersCemMil",
                      stats.sequentialProcessingTime,
                      stats.sequentialLoadTime,
                      stats.parallel4ProcessingTime,
