@@ -107,7 +107,7 @@ void processSequentialChunk(DataBase &db, const std::string &nomeArquivo,
     db.createTable("faturamentoPaisUsuario_" + nomeArquivo, "(user_country TEXT PRIMARY KEY, price REAL)");
     db.createTable("faturamentoTipoAssento_" + nomeArquivo, "(seat_type TEXT PRIMARY KEY, price REAL)");
     db.createTable("flight_stats_" + nomeArquivo, "(flight_number TEXT PRIMARY KEY, reservation_count INTEGER)");
-    db.createTable("destination_stats_" + nomeArquivo, "(most_common_destination TEXT PRIMARY KEY, reservation_count INTEGER)");
+    db.createTable("destination_stats_" + nomeArquivo, "(destination TEXT PRIMARY KEY, reservation_count INTEGER)");
 
     // Processing
     auto startProcessing = Clock::now();
@@ -147,7 +147,7 @@ void processSequentialChunk(DataBase &db, const std::string &nomeArquivo,
     loader.loadData("faturamentoPaisUsuario_" + nomeArquivo, porPais, {"user_country", "price"}, false);
     loader.loadData("faturamentoTipoAssento_" + nomeArquivo, porClasse, {"seat_type", "price"}, false);
     loader.loadData("flight_stats_" + nomeArquivo, flightStats, {"flight_number", "reservation_count"}, false);
-    loader.loadData("destination_stats_" + nomeArquivo, destinationStats, {"most_common_destination", "reservation_count"}, false);
+    loader.loadData("destination_stats_" + nomeArquivo, destinationStats, {"destination", "reservation_count"}, false);
     auto endLoad = Clock::now();
 
     // Update stats
@@ -180,7 +180,7 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
     db.createTable("faturamentoPaisUsuario" + tableSuffix, "(user_country TEXT PRIMARY KEY, price REAL)");
     db.createTable("faturamentoTipoAssento" + tableSuffix, "(seat_type TEXT PRIMARY KEY, price REAL)");
     db.createTable("flight_stats" + tableSuffix, "(flight_number TEXT PRIMARY KEY, reservation_count INTEGER)");
-    db.createTable("destination_stats" + tableSuffix, "(most_common_destination TEXT PRIMARY KEY, reservation_count INTEGER)");
+    db.createTable("destination_stats" + tableSuffix, "(destination TEXT PRIMARY KEY, reservation_count INTEGER)");
 
     ThreadPool pool(numThreads);
     Queue<int, DataFrame<std::string>> partitionQueue(numThreads);
@@ -309,7 +309,7 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
     auto aggregatedRevenue = revenue.groupby("reservation_time", "price");
     auto aggregatedCards = cards.groupby("payment_method", "price");
     auto aggregatedFlightStats = allFlightStats.groupby("flight_number", "reservation_count");
-    auto aggregatedDestinationStats = allDestinationStats.groupby("most_common_destination", "reservation_count");
+    auto aggregatedDestinationStats = allDestinationStats.groupby("destination", "reservation_count");
     auto aggregatedUserCountry = allUserCountry.groupby("user_country", "price");
     auto aggregatedSeatType = allSeatType.groupby("seat_type", "price");
     auto endAggregation = Clock::now();
@@ -322,7 +322,7 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
     loader.loadData("faturamentoPaisUsuario" + tableSuffix, aggregatedUserCountry, {"user_country", "price"}, false);
     loader.loadData("faturamentoTipoAssento" + tableSuffix, aggregatedSeatType, {"seat_type", "price"}, false);
     loader.loadData("flight_stats" + tableSuffix, aggregatedFlightStats, {"flight_number", "reservation_count"}, false);
-    loader.loadData("destination_stats" + tableSuffix, aggregatedDestinationStats, {"most_common_destination", "reservation_count"}, false);
+    loader.loadData("destination_stats" + tableSuffix, aggregatedDestinationStats, {"destination", "reservation_count"}, false);
     auto endLoad = Clock::now();
 
     long aggregationTime = std::chrono::duration_cast<std::chrono::milliseconds>(endAggregation - startAggregation).count();
