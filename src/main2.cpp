@@ -387,6 +387,7 @@ void Test()
                       stats.parallel12LoadTime);
     };
 
+    // We need this to pass into the jsonExtractor. It helps it being generic.
     std::vector<std::string> columns = {
         "flight_id", "seat", "user_id", "customer_name", 
         "status", "payment_method", "reservation_time", "price"
