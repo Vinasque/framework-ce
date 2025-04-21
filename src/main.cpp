@@ -1,99 +1,435 @@
 #include <iostream>
 #include <vector>
 #include <chrono>
+#include <iomanip>
+#include <random>
+#include <mutex>
 #include "dataframe.hpp"
 #include "extractor.hpp"
+#include "trigger.hpp"
 #include "handler.hpp"
 #include "database.h"
 #include "loader.hpp"
 #include "ThreadPool.hpp"
+#include "queue.hpp"
 
 using Clock = std::chrono::high_resolution_clock;
 
-void testSequentialPipeline() {
+// Global mutex for thread-safe printing
+std::mutex table_mutex;
+
+void printTableHeader()
+{
+    std::lock_guard<std::mutex> lock(table_mutex);
+    std::cout << "\n----------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
+    std::cout << "| Trigger   | Lines | Seq. Process | Seq. Load | Par. (4) Process | Par. (4) Load | Par. (8) Process | Par. (8) Load | Par. (12) Process | Par. (12) Load |" << std::endl;
+    std::cout << "------------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
+}
+
+void printTableRow(const std::string &triggerType, size_t linesProcessed,
+                   const long &seqProc, const long &seqLoad,
+                   const long &par4Proc, const long &par4Load,
+                   const long &par8Proc, const long &par8Load,
+                   const long &par12Proc, const long &par12Load)
+{
+    std::lock_guard<std::mutex> lock(table_mutex);
+    std::cout << "| " << std::setw(9) << std::left << triggerType
+              << " | " << std::setw(5) << std::right << linesProcessed
+              << " | " << std::setw(12) << std::right << seqProc
+              << " | " << std::setw(9) << std::right << seqLoad
+              << " | " << std::setw(16) << std::right << par4Proc
+              << " | " << std::setw(13) << std::right << par4Load
+              << " | " << std::setw(16) << std::right << par8Proc
+              << " | " << std::setw(13) << std::right << par8Load
+              << " | " << std::setw(16) << std::right << par12Proc
+              << " | " << std::setw(13) << std::right << par12Load
+              << " |" << std::endl;
+    std::cout << "------------------------------------------------------------------------------------------------------------------------------------------------------------" << std::endl;
+}
+
+struct TestResults
+{
+    struct RunStats
+    {
+        // Processing times
+        long sequentialProcessingTime = 0;
+        long sequentialLoadTime = 0;
+        long parallel4ProcessingTime = 0;
+        long parallel4LoadTime = 0;
+        long parallel8ProcessingTime = 0;
+        long parallel8LoadTime = 0;
+        long parallel12ProcessingTime = 0;
+        long parallel12LoadTime = 0;
+
+        // Metadata
+        size_t linesProcessed = 0;
+        std::string triggerType;
+        std::chrono::time_point<Clock> startTime;
+        std::chrono::time_point<Clock> endTime;
+    };
+
+    std::vector<RunStats> allRuns;
+};
+
+void processSequentialChunk(DataBase &db, const std::string &nomeArquivo,
+    DataFrame<std::string> &df,
+    TestResults::RunStats &stats)
+{
+    stats.startTime = Clock::now();
+
+    // Load supporting data
+    Extractor extractor;
+    auto users_df = std::make_shared<const DataFrame<std::string>>(
+        extractor.extractFromCsv("../generator/users.csv")
+    );
+    auto flight_seats_df = std::make_shared<const DataFrame<std::string>>(
+        extractor.extractFromCsv("../generator/flights_seats.csv")
+    );
+
+    // Criar os mapas uma vez
+    std::unordered_map<std::string, std::string> userIdToCountry;
+    for (int i = 0; i < users_df->numRows(); ++i) {
+        userIdToCountry[users_df->getValue("user_id", i)] = users_df->getValue("country", i);
+    }
+
+    std::unordered_map<std::string, std::string> seatKeyToClass;
+    for (int i = 0; i < flight_seats_df->numRows(); ++i) {
+        std::string key = flight_seats_df->getValue("flight_id", i) + "_" + flight_seats_df->getValue("seat", i);
+        seatKeyToClass[key] = flight_seats_df->getValue("seat_class", i);
+    }
+
+    // Create tables
+    db.createTable("faturamento_" + nomeArquivo, "(reservation_time TEXT PRIMARY KEY, price REAL)");
+    db.createTable("faturamentoMetodo_" + nomeArquivo, "(payment_method TEXT PRIMARY KEY, price REAL)");
+    db.createTable("faturamentoPaisUsuario_" + nomeArquivo, "(user_country TEXT PRIMARY KEY, price REAL)");
+    db.createTable("faturamentoTipoAssento_" + nomeArquivo, "(seat_type TEXT PRIMARY KEY, price REAL)");
+
+    // Processing
+    auto startProcessing = Clock::now();
+    ValidationHandler validationHandler;
+    StatusFilterHandler statusFilterHandler("confirmed");
+    UsersCountryRevenue userHandler(userIdToCountry);
+    SeatTypeRevenue seatHandler(seatKeyToClass);
+    DateHandler dateHandler;
+    RevenueHandler revenueHandler;
+    CardRevenueHandler cardHandler;
+
+    DataFrame<std::string> processed = validationHandler.process(df);
+    processed = statusFilterHandler.process(processed);
+
+    // Run new handlers BEFORE the dateHandler
+    DataFrame<std::string> porPais = userHandler.process(processed);
+    DataFrame<std::string> porClasse = seatHandler.process(processed);
+
+    processed = dateHandler.process(processed);
+    DataFrame<std::string> revenue = revenueHandler.process(processed);
+    DataFrame<std::string> cards = cardHandler.process(processed);
+    auto endProcessing = Clock::now();
+
+    // Loading
+    Loader loader(db);
+    auto startLoad = Clock::now();
+    loader.loadData("faturamento_" + nomeArquivo, revenue, {"reservation_time", "price"}, false);
+    loader.loadData("faturamentoMetodo_" + nomeArquivo, cards, {"payment_method", "price"}, false);
+    loader.loadData("faturamentoPaisUsuario_" + nomeArquivo, porPais, {"user_country", "price"}, false);
+    loader.loadData("faturamentoTipoAssento_" + nomeArquivo, porClasse, {"seat_type", "price"}, false);
+    auto endLoad = Clock::now();
+
+    // Update stats
+    stats.sequentialProcessingTime = std::chrono::duration_cast<std::chrono::milliseconds>(endProcessing - startProcessing).count();
+    stats.sequentialLoadTime = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad).count();
+    stats.linesProcessed = df.numRows();
+    stats.endTime = Clock::now();
+}
+
+
+void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeArquivo,
+    DataFrame<std::string> &df,
+    TestResults::RunStats &stats)
+{
     auto start = Clock::now();
 
-    DataBase db("../databases/earning2.db");
-    db.createTable("faturamento", "(reservation_time TEXT PRIMARY KEY, price REAL)");
-    db.createTable("faturamentoMetodo", "(payment_method TEXT PRIMARY KEY, price REAL)");
-
     Extractor extractor;
-    DataFrame<std::string> df = extractor.extractFromJson("../generator/orders.json");
+    auto users_df = std::make_shared<const DataFrame<std::string>>(
+        extractor.extractFromCsv("../generator/users.csv")
+    );
+    auto flight_seats_df = std::make_shared<const DataFrame<std::string>>(
+        extractor.extractFromCsv("../generator/flights_seats.csv")
+    );
 
-    ValidationHandler validationHandler;
-    DateHandler dateHandler;
-    RevenueHandler revenueHandler;
-    CardRevenueHandler cardHandler;
+    std::string tableSuffix = "_" + nomeArquivo + "_" + std::to_string(numThreads);
+    db.createTable("faturamento" + tableSuffix, "(reservation_time TEXT PRIMARY KEY, price REAL)");
+    db.createTable("faturamentoMetodo" + tableSuffix, "(payment_method TEXT PRIMARY KEY, price REAL)");
+    db.createTable("faturamentoPaisUsuario" + tableSuffix, "(user_country TEXT PRIMARY KEY, price REAL)");
+    db.createTable("faturamentoTipoAssento" + tableSuffix, "(seat_type TEXT PRIMARY KEY, price REAL)");
 
-    DataFrame<std::string> df2 = validationHandler.process(df);
-    DataFrame<std::string> df3 = dateHandler.process(df2);
-    DataFrame<std::string> df4 = revenueHandler.process(df3);
-    DataFrame<std::string> df5 = cardHandler.process(df3);
-
-    Loader loader(db);
-    loader.loadData("faturamento", df4, {"reservation_time", "price"}, false);
-    loader.loadData("faturamentoMetodo", df5, {"payment_method", "price"}, false);
-
-    auto end = Clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    std::cout << "\n⏱️ Tempo (sequencial): " << duration.count() << " ms\n";
-}
-
-void testParallelPipeline(int numThreads) {
-    auto start = std::chrono::high_resolution_clock::now();
-
-    // Criação da thread pool
     ThreadPool pool(numThreads);
+    Queue<int, DataFrame<std::string>> partitionQueue(numThreads);
+    Queue<int, DataFrame<std::string>> processedQueue(numThreads);
+    Queue<int, DataFrame<std::string>> userCountryQueue(numThreads);
+    Queue<int, DataFrame<std::string>> seatTypeQueue(numThreads);
 
-    // Criação do extractor e carregamento do DataFrame
-    Extractor extractor;
-    auto futureDf = pool.addTask(&Extractor::extractFromJson, &extractor, "../generator/orders.json");
-    DataFrame<std::string> df = futureDf.get();
+    std::unordered_map<std::string, std::string> userIdToCountry;
+    for (int i = 0; i < users_df->numRows(); ++i)
+        userIdToCountry[users_df->getValue("user_id", i)] = users_df->getValue("country", i);
 
-    // Criando handlers para processamento dos dados
+    std::unordered_map<std::string, std::string> seatKeyToClass;
+    for (int i = 0; i < flight_seats_df->numRows(); ++i)
+        seatKeyToClass[flight_seats_df->getValue("flight_id", i) + "_" + flight_seats_df->getValue("seat", i)] =
+            flight_seats_df->getValue("seat_class", i);
+
+
+    // Partition the data
+    size_t chunk_size = df.numRows() / numThreads;
+    for (int i = 0; i < numThreads; ++i)
+    {
+        size_t start_idx = i * chunk_size;
+        size_t end_idx = (i == numThreads - 1) ? df.numRows() : start_idx + chunk_size;
+        partitionQueue.enQueue({i, df.extractLines(start_idx, end_idx)});
+    }
+
+    // Processing phase
+    auto startProcessing = Clock::now();
+    std::vector<std::future<void>> processingFutures;
+
     ValidationHandler validationHandler;
+    StatusFilterHandler statusFilterHandler("confirmed");
     DateHandler dateHandler;
+    
+    // Instâncias únicas thread-safe
+    auto sharedUserHandler = std::make_shared<UsersCountryRevenue>(userIdToCountry);
+    auto sharedSeatHandler = std::make_shared<SeatTypeRevenue>(seatKeyToClass);
+
+    for (int i = 0; i < numThreads; ++i)
+    {
+        processingFutures.push_back(pool.addTask([&, i, sharedUserHandler, sharedSeatHandler]()
+        {
+            auto [idx, chunk] = partitionQueue.deQueue();
+            auto processed = validationHandler.process(chunk);
+            processed = statusFilterHandler.process(processed);
+
+            // Processa com handlers compartilhados (thread-safe)
+            DataFrame<std::string> countryRevenue = sharedUserHandler->process(processed);
+            userCountryQueue.enQueue({idx, countryRevenue});
+
+            DataFrame<std::string> seatRevenue = sharedSeatHandler->process(processed);
+            seatTypeQueue.enQueue({idx, seatRevenue});
+
+            processed = dateHandler.process(processed);
+            processedQueue.enQueue({idx, processed});
+        }));
+    }
+
+    for (auto &fut : processingFutures)
+    fut.get();
+    auto endProcessing = Clock::now();
+
+    // Aggregate all processed data
+    DataFrame<std::string> allProcessed;
+    for (int i = 0; i < numThreads; ++i)
+    {
+        auto [idx, processed] = processedQueue.deQueue();
+        allProcessed = (i == 0) ? processed : allProcessed.concat(processed);
+    }
+
+    // Aggregate user country data
+    DataFrame<std::string> allUserCountry;
+    for (int i = 0; i < numThreads; ++i)
+    {
+        auto [idx, countryDf] = userCountryQueue.deQueue();
+        allUserCountry = (i == 0) ? countryDf : allUserCountry.concat(countryDf);
+    }
+
+    // Aggregate seat type data
+    DataFrame<std::string> allSeatType;
+    for (int i = 0; i < numThreads; ++i)
+    {
+        auto [idx, seatDf] = seatTypeQueue.deQueue();
+        allSeatType = (i == 0) ? seatDf : allSeatType.concat(seatDf);
+    }
+
+    // Final aggregation phase
+    auto startAggregation = Clock::now();
     RevenueHandler revenueHandler;
     CardRevenueHandler cardHandler;
 
-    // Processando o DataFrame com os handlers em paralelo
-    auto f1 = pool.addTask(&ValidationHandler::process, &validationHandler, df);
-    auto f2 = pool.addTask(&DateHandler::process, &dateHandler, df);
-    DataFrame<std::string> dfValid = f1.get();
-    DataFrame<std::string> dfDated = f2.get();
+    DataFrame<std::string> revenue = revenueHandler.process(allProcessed);
+    DataFrame<std::string> cards = cardHandler.process(allProcessed);
 
-    // Continuando com o processamento
-    auto f3 = pool.addTask(&RevenueHandler::process, &revenueHandler, dfDated);
-    auto f4 = pool.addTask(&CardRevenueHandler::process, &cardHandler, dfDated);
-    DataFrame<std::string> dfRevenue = f3.get();
-    DataFrame<std::string> dfCards = f4.get();
+    auto aggregatedRevenue = revenue.groupby("reservation_time", "price");
+    auto aggregatedCards = cards.groupby("payment_method", "price");
 
-    // Criando e conectando ao banco de dados
-    DataBase db("earning.db");
-    db.createTable("faturamento", "(reservation_time TEXT PRIMARY KEY, price REAL)");
-    db.createTable("faturamentoMetodo", "(payment_method TEXT PRIMARY KEY, price REAL)");
+    // Agrupar dados de país (já processados no handler)
+    DataFrame<std::string> aggregatedUserCountry = allUserCountry.groupby("user_country", "price");
+    DataFrame<std::string> aggregatedSeatType = allSeatType.groupby("seat_type", "price");
+    auto endAggregation = Clock::now();
 
-    // Carregando os dados processados no banco
+    // Load all data into DB
     Loader loader(db);
-    auto f5 = pool.addTask(&Loader::loadData, &loader, "faturamento", dfRevenue, std::vector<std::string>{"reservation_time", "price"}, false);
-    auto f6 = pool.addTask(&Loader::loadData, &loader, "faturamentoMetodo", dfCards, std::vector<std::string>{"payment_method", "price"}, false);
+    auto startLoad = Clock::now();
+    loader.loadData("faturamento" + tableSuffix, aggregatedRevenue, {"reservation_time", "price"}, false);
+    loader.loadData("faturamentoMetodo" + tableSuffix, aggregatedCards, {"payment_method", "price"}, false);
+    loader.loadData("faturamentoPaisUsuario" + tableSuffix, aggregatedUserCountry, {"user_country", "price"}, false);
+    loader.loadData("faturamentoTipoAssento" + tableSuffix, aggregatedSeatType, {"seat_type", "price"}, false);
+    auto endLoad = Clock::now();
 
-    // Aguardando as inserções terminarem
-    f5.get();
-    f6.get();
+    long aggregationTime = std::chrono::duration_cast<std::chrono::milliseconds>(endAggregation - startAggregation).count();
+    long processingTime = std::chrono::duration_cast<std::chrono::milliseconds>(endProcessing - startProcessing).count();
 
-    // Calculando o tempo total do processamento
-    auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    std::cout << "\n⏱️ Tempo (paralelo com " << numThreads << " threads): " << duration.count() << " ms\n";
+    switch (numThreads)
+    {
+        case 4:
+        stats.parallel4ProcessingTime = processingTime + aggregationTime;
+        stats.parallel4LoadTime = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad).count();
+    break;
+        case 8:
+        stats.parallel8ProcessingTime = processingTime + aggregationTime;
+        stats.parallel8LoadTime = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad).count();
+    break;
+        case 12:
+        stats.parallel12ProcessingTime = processingTime + aggregationTime;
+        stats.parallel12LoadTime = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad).count();
+    break;
+    }
 }
 
-int main() {
-    std::cout << "\n=== Benchmark: Versão SEQUENCIAL ===" << std::endl;
-    testSequentialPipeline();
 
-    std::cout << "\n=== Benchmark: Versão PARALELA (8 threads) ===" << std::endl;
-    testParallelPipeline(8);
+void Test()
+{
+    Extractor extractor;
+    DataBase db("../databases/DB_Teste.db");
+    const std::string file_path = "../generator/ordersCemMil.json";
+    TestResults results;
 
+    DataBase dbMock("../databases/MockSQL.db");
+    Loader loaderMock(dbMock);
+    std::string createQuery = "(flight_id TEXT, seat TEXT, user_id BIGINT, customer_name TEXT, status TEXT, payment_method TEXT, reservation_time DATE, price FLOAT)";
+    dbMock.createTable("MockData", createQuery);
+
+    printTableHeader();
+
+    auto processFullPipeline = [&](const std::string &triggerType, DataFrame<std::string> df)
+    {
+        if (df.numRows() == 0)
+        {
+            extractor.resetFilePosition(file_path);
+            return;
+        }
+
+        TestResults::RunStats stats;
+        stats.triggerType = triggerType;
+        stats.linesProcessed = df.numRows();
+
+        // Run all pipeline variants
+        processSequentialChunk(db, "ordersCemMil", df, stats);
+        processParallelChunk(4, db, "ordersCemMil", df, stats);
+        processParallelChunk(8, db, "ordersCemMil", df, stats);
+        processParallelChunk(12, db, "ordersCemMil", df, stats);
+
+        results.allRuns.push_back(stats);
+
+        // Print to table with trigger type and line count
+        printTableRow(stats.triggerType,
+                      stats.linesProcessed,
+                      stats.sequentialProcessingTime,
+                      stats.sequentialLoadTime,
+                      stats.parallel4ProcessingTime,
+                      stats.parallel4LoadTime,
+                      stats.parallel8ProcessingTime,
+                      stats.parallel8LoadTime,
+                      stats.parallel12ProcessingTime,
+                      stats.parallel12LoadTime);
+    };
+
+    // SQLiteMockTrigger - insere dados aleatórios no SQLite
+    auto SQLiteMockTrigger = std::make_shared<TimerTrigger>(1000);
+    SQLiteMockTrigger->setCallback([&](){
+        // Extrai um chunk aleatório de dados
+        DataFrame<std::string> df = extractor.extractRandomChunk(file_path, 5000, 15000);
+        // Insere dados no bancos
+        loaderMock.loadData("MockData", df, {"flight_id", "seat", "user_id", "customer_name", "status", "payment_method", "reservation_time", "price"}, true);
+    });
+
+    // TimerTrigger - processa dados do SQLite a cada 10 segundos
+    auto timer_trigger = std::make_shared<TimerTrigger>(10000);
+    timer_trigger->setCallback([&](){
+        // Consulta SQL para pegar os dados
+        std::string tableName = "MockData";
+        std::string dbFilePath = "../databases/MockSQL.db";
+
+        // Extrai dados do banco SQLite
+        DataFrame<std::string> df = extractor.extractFromSqlite(dbFilePath, tableName);
+
+        // Verifica se há dados para processar
+        if (df.numRows() > 0) {
+            processFullPipeline("Timer", df);
+        } else {
+            std::cout << "Nenhum dado encontrado para processamento!" << std::endl;
+        }
+    });
+
+    // RequestTrigger - processes fixed 15000-line chunks
+    auto request_trigger = std::make_shared<RequestTrigger>();
+    request_trigger->setCallback([&]()
+                                 {
+        DataFrame<std::string> df = extractor.extractChunk(file_path, 15000);
+        processFullPipeline("Request", df); });
+
+    // Start triggers
+    SQLiteMockTrigger->start();
+    timer_trigger->start();
+    request_trigger->start();
+
+    // Simulate random requests
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dist(2, 5);
+
+    for (int i = 0; i < 3; ++i)
+    {
+        std::this_thread::sleep_for(std::chrono::seconds(dist(gen)));
+        request_trigger->trigger();
+    }
+
+    // Run for 30 seconds
+    std::this_thread::sleep_for(std::chrono::seconds(30));
+    timer_trigger->stop();
+    request_trigger->stop();
+
+    // Final summary
+    std::cout << "\n=== FINAL SUMMARY ===\n";
+    std::cout << "Total executions: " << results.allRuns.size() << "\n";
+
+    // Calculate totals instead of averages
+    long totalSeqProc = 0, totalSeqLoad = 0;
+    long totalPar4Proc = 0, totalPar4Load = 0;
+    long totalPar8Proc = 0, totalPar8Load = 0;
+    long totalPar12Proc = 0, totalPar12Load = 0;
+    size_t totalLines = 0;
+
+    for (const auto &run : results.allRuns)
+    {
+        totalSeqProc += run.sequentialProcessingTime;
+        totalSeqLoad += run.sequentialLoadTime;
+        totalPar4Proc += run.parallel4ProcessingTime;
+        totalPar4Load += run.parallel4LoadTime;
+        totalPar8Proc += run.parallel8ProcessingTime;
+        totalPar8Load += run.parallel8LoadTime;
+        totalPar12Proc += run.parallel12ProcessingTime;
+        totalPar12Load += run.parallel12LoadTime;
+        totalLines += run.linesProcessed;
+    }
+
+    std::cout << "\nTotal Times (ms):\n";
+    std::cout << "Sequential: Processing=" << totalSeqProc << " | Loading=" << totalSeqLoad << "\n";
+    std::cout << "Parallel 4: Processing=" << totalPar4Proc << " | Loading=" << totalPar4Load << "\n";
+    std::cout << "Parallel 8: Processing=" << totalPar8Proc << " | Loading=" << totalPar8Load << "\n";
+    std::cout << "Parallel 12: Processing=" << totalPar12Proc << " | Loading=" << totalPar12Load << "\n";
+    std::cout << "Total lines processed: " << totalLines << "\n";
+}
+
+int main()
+{
+    Test();
     return 0;
 }

@@ -45,8 +45,8 @@ public:
     void loadData(const std::string& table_name, 
                  const DataFrame<std::string>& df, 
                  const std::vector<std::string>& columns, 
-                 bool bGroupBy) {
-        
+                 bool bMock) {
+
         // Determine the table type for special handling
         bool isRevenueTable = (table_name.find("faturamento") != std::string::npos);
         bool isPaymentMethodTable = (table_name.find("faturamentoMetodo") != std::string::npos);
@@ -77,27 +77,45 @@ public:
                     } else {
                         // Record doesn't exist - insert new
                         std::vector<std::string> values = {key_value, str_value};
-                        database.insertValuesintoTable(table_name, columns, values, bGroupBy);
+                        database.insertValuesintoTable(table_name, columns, values);
                     }
                 } catch (const std::exception& e) {
                     std::cerr << "Error processing row " << i << ": " << e.what() << std::endl;
                     continue;
                 }
             }
+        } else if (bMock) {
+            // Inserção em massa no modo mock (mais rápido)
+            // std::cout << "Tamanho do DF subindo: " << df.numRows() << std::endl;
+            database.bulkInsert(df);
         } else {
-            // For other tables, use standard insert
-            for (int i = 0; i < df.numRows(); ++i) {
-                try {
-                    std::vector<std::string> values;
-                    for (const auto& column : columns) {
-                        values.push_back(df.getValue(column, i));
-                    }
-                    database.insertValuesintoTable(table_name, columns, values, bGroupBy);
-                } catch (const std::exception& e) {
-                    std::cerr << "Error inserting row " << i << ": " << e.what() << std::endl;
-                    continue;
+            // Para outras tabelas, faz a inserção padrão em massa
+            std::string insertQuery = "INSERT INTO " + table_name + " (";
+            for (size_t i = 0; i < columns.size(); ++i) {
+                insertQuery += columns[i];
+                if (i < columns.size() - 1) {
+                    insertQuery += ", ";
                 }
             }
+            insertQuery += ") VALUES ";
+
+            // Prepara a query para inserção em massa
+            for (int i = 0; i < df.numRows(); ++i) {
+                insertQuery += "(";
+                for (size_t j = 0; j < columns.size(); ++j) {
+                    insertQuery += "'" + df.getValue(columns[j], i) + "'";
+                    if (j < columns.size() - 1) {
+                        insertQuery += ", ";
+                    }
+                }
+                insertQuery += ")";
+                if (i < df.numRows() - 1) {
+                    insertQuery += ", ";
+                }
+            }
+
+            // Executa a inserção em massa
+            sqlite3_exec(database.db, insertQuery.c_str(), nullptr, nullptr, nullptr);
         }
     }
 };

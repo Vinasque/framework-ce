@@ -13,7 +13,7 @@ all:
 
 # Limpeza
 clean:
-	rm -f $(TARGET) sqlite3.o *.db ../databases/*.db 2>/dev/null || del $(TARGET) sqlite3.o *.db ..\databases\*.db 2>nul
+	rm -f $(TARGET) sqlite3.o *.db ../databases/* 2>/dev/null || del $(TARGET) sqlite3.o *.db ..\databases\*.db 2>nul
 
 # Execução
 run:

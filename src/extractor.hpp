@@ -230,10 +230,10 @@ public:
             std::cerr << "CSV extraction error: " << e.what() << std::endl;
             throw;
         }
-    }
+    } 
 
     // Método para extrair dados de um banco de dados SQLite
-    DataFrame<std::string> extractFromSqlite(const std::string& dbPath, const std::string& query) {
+    DataFrame<std::string> extractFromSqlite(const std::string& dbPath, const std::string& tableName) {
         try {
             sqlite3* db;
             int rc = sqlite3_open(dbPath.c_str(), &db);
@@ -243,6 +243,7 @@ public:
             }
 
             sqlite3_stmt* stmt;
+            std::string query = ("SELECT * FROM " + tableName);
             rc = sqlite3_prepare_v2(db, query.c_str(), -1, &stmt, 0);
             if (rc != SQLITE_OK) {
                 throw std::runtime_error("Failed to execute query: " + std::string(sqlite3_errmsg(db)));
@@ -266,6 +267,10 @@ public:
                 data.push_back(row);
             }
 
+            char* errMsg;
+            query = ("DELETE FROM " + tableName + ";");
+            rc = sqlite3_exec(db, query.c_str(), nullptr, nullptr, &errMsg);
+
             sqlite3_finalize(stmt);
             sqlite3_close(db);
 
@@ -279,7 +284,9 @@ public:
                 series.push_back(Series<std::string>(columnData));
             }
 
-            return DataFrame<std::string>(columns, series);
+            DataFrame<std::string> resultDf = DataFrame<std::string>(columns, series);
+
+            return resultDf;
         } catch (const std::exception& e) {
             std::cerr << "SQLite extraction error: " << e.what() << std::endl;
             throw;
