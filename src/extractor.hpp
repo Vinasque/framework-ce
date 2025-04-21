@@ -173,7 +173,57 @@ public:
         return extractChunk(filePath, columns, dist(gen));
     }
 
-    // Extract from a CSV file
+    // Extract from a TXT file (ig its fine)
+    DataFrame<std::string> extractFromTxt(const std::string& filePath, const std::vector<std::string>& columns, char delimiter = '\t') {
+        try {
+            std::ifstream file(filePath);
+            if (!file.is_open()) {
+                throw std::runtime_error("Could not open the file: " + filePath);
+            }
+
+            std::string line;
+            std::vector<std::vector<std::string>> data;
+
+            // Read every line in the file
+            while (std::getline(file, line)) {
+                std::vector<std::string> row;
+                std::stringstream ss(line);
+                std::string cell;
+
+                // Will use the delimiter char to be able to distinguish things
+                while (std::getline(ss, cell, delimiter)) {
+                    row.push_back(cell);
+                }
+
+                data.push_back(row);  // Add the line
+            }
+
+            file.close();
+
+            // We create the series we need for the DF
+            std::vector<Series<std::string>> series;
+            for (size_t i = 0; i < columns.size(); ++i) {
+                std::vector<std::string> columnData;
+                for (const auto& row : data) {
+                    if (i < row.size()) {
+                        columnData.push_back(row[i]);
+                    } else {
+                        columnData.push_back("");
+                    }
+                }
+                series.push_back(Series<std::string>(columnData));
+            }
+
+            // Add the columns together
+            return DataFrame<std::string>(columns, series);
+
+        } catch (const std::exception& e) {
+            std::cerr << "TXT extraction error: " << e.what() << std::endl;
+            throw;
+        }
+    }
+
+    // Extract from a CSV file (the same as before but easier actually)
     DataFrame<std::string> extractFromCsv(const std::string& filePath) {
         try {
             std::ifstream file(filePath);
@@ -220,7 +270,7 @@ public:
         }
     } 
 
-    // Método para extrair dados de um banco de dados SQLite
+    // Extract from a SQLite database
     DataFrame<std::string> extractFromSqlite(const std::string& dbPath, const std::string& tableName) {
         try {
             sqlite3* db;
@@ -230,6 +280,7 @@ public:
                 throw std::runtime_error("Cannot open database: " + std::string(sqlite3_errmsg(db)));
             }
 
+            // Get the query with the items from the table we want
             sqlite3_stmt* stmt;
             std::string query = ("SELECT * FROM " + tableName);
             rc = sqlite3_prepare_v2(db, query.c_str(), -1, &stmt, 0);
@@ -262,7 +313,7 @@ public:
             sqlite3_finalize(stmt);
             sqlite3_close(db);
 
-            // Prepare DataFrame
+            // Prepare tne DataFrame
             std::vector<Series<std::string>> series;
             for (size_t i = 0; i < columns.size(); ++i) {
                 std::vector<std::string> columnData;
