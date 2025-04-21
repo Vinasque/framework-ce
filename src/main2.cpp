@@ -387,19 +387,26 @@ void Test()
                       stats.parallel12LoadTime);
     };
 
+    std::vector<std::string> columns = {
+        "flight_id", "seat", "user_id", "customer_name", 
+        "status", "payment_method", "reservation_time", "price"
+    };
+    
     // TimerTrigger - processes random chunks (7000-21000 lines) every 5 seconds
     auto timer_trigger = std::make_shared<TimerTrigger>(15000);
     timer_trigger->setCallback([&]()
-                               {
-        DataFrame<std::string> df = extractor.extractRandomChunk(file_path, 7000, 21000);
-        processFullPipeline("Timer", df); });
+    {
+        DataFrame<std::string> df = extractor.extractRandomChunk(file_path, columns, 7000, 21000);
+        processFullPipeline("Timer", df); 
+    });
 
     // RequestTrigger - processes fixed 15000-line chunks
     auto request_trigger = std::make_shared<RequestTrigger>();
     request_trigger->setCallback([&]()
-                                 {
-        DataFrame<std::string> df = extractor.extractChunk(file_path, 15000);
-        processFullPipeline("Request", df); });
+    {
+        DataFrame<std::string> df = extractor.extractChunk(file_path, columns, 15000);
+        processFullPipeline("Request", df); 
+    });
 
     // Start triggers
     timer_trigger->start();

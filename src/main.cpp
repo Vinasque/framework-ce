@@ -341,11 +341,16 @@ void Test()
                       stats.parallel12LoadTime);
     };
 
+    std::vector<std::string> columns = {
+        "flight_id", "seat", "user_id", "customer_name", 
+        "status", "payment_method", "reservation_time", "price"
+    };
+
     // SQLiteMockTrigger - insere dados aleatórios no SQLite
     auto SQLiteMockTrigger = std::make_shared<TimerTrigger>(1000);
     SQLiteMockTrigger->setCallback([&](){
         // Extrai um chunk aleatório de dados
-        DataFrame<std::string> df = extractor.extractRandomChunk(file_path, 5000, 15000);
+        DataFrame<std::string> df = extractor.extractRandomChunk(file_path, columns, 5000, 15000);
         // Insere dados no bancos
         loaderMock.loadData("MockData", df, {"flight_id", "seat", "user_id", "customer_name", "status", "payment_method", "reservation_time", "price"}, true);
     });
@@ -373,7 +378,7 @@ void Test()
     auto request_trigger = std::make_shared<RequestTrigger>();
     request_trigger->setCallback([&]()
                                  {
-        DataFrame<std::string> df = extractor.extractChunk(file_path, 15000);
+        DataFrame<std::string> df = extractor.extractChunk(file_path, columns, 15000);
         processFullPipeline("Request", df); });
 
     // Start triggers
