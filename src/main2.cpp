@@ -85,6 +85,9 @@ void processSequentialChunk(DataBase &db, const std::string &nomeArquivo,
     auto flight_seats_df = std::make_shared<const DataFrame<std::string>>(
         extractor.extractFromCsv("../generator/flights_seats.csv")
     );
+    auto flights_df = std::make_shared<const DataFrame<std::string>>(
+        extractor.extractFromCsv("../generator/flights.csv")
+    );
 
     // Criar os mapas uma vez
     std::unordered_map<std::string, std::string> userIdToCountry;
@@ -103,6 +106,8 @@ void processSequentialChunk(DataBase &db, const std::string &nomeArquivo,
     db.createTable("faturamentoMetodo_" + nomeArquivo, "(payment_method TEXT PRIMARY KEY, price REAL)");
     db.createTable("faturamentoPaisUsuario_" + nomeArquivo, "(user_country TEXT PRIMARY KEY, price REAL)");
     db.createTable("faturamentoTipoAssento_" + nomeArquivo, "(seat_type TEXT PRIMARY KEY, price REAL)");
+    db.createTable("flight_stats_" + nomeArquivo, "(flight_number TEXT PRIMARY KEY, reservation_count INTEGER)");
+    db.createTable("destination_stats_" + nomeArquivo, "(most_common_destination TEXT PRIMARY KEY, reservation_count INTEGER)");
 
     // Processing
     auto startProcessing = Clock::now();
@@ -113,15 +118,23 @@ void processSequentialChunk(DataBase &db, const std::string &nomeArquivo,
     DateHandler dateHandler;
     RevenueHandler revenueHandler;
     CardRevenueHandler cardHandler;
+    FlightInfoEnricherHandler flightEnricher(*flights_df);
+    DestinationCounterHandler destinationCounter;
 
     DataFrame<std::string> processed = validationHandler.process(df);
     processed = statusFilterHandler.process(processed);
 
-    // Run new handlers BEFORE the dateHandler
-    DataFrame<std::string> porPais = userHandler.process(processed);
-    DataFrame<std::string> porClasse = seatHandler.process(processed);
+    // Run new handlers
+    auto flightResults = flightEnricher.processMulti({processed});
+    DataFrame<std::string> enrichedDf = flightResults[0];
+    DataFrame<std::string> flightStats = flightResults[1];
+    
+    DataFrame<std::string> destinationStats = destinationCounter.process(enrichedDf);
+    
+    DataFrame<std::string> porPais = userHandler.process(enrichedDf);
+    DataFrame<std::string> porClasse = seatHandler.process(enrichedDf);
 
-    processed = dateHandler.process(processed);
+    processed = dateHandler.process(enrichedDf);
     DataFrame<std::string> revenue = revenueHandler.process(processed);
     DataFrame<std::string> cards = cardHandler.process(processed);
     auto endProcessing = Clock::now();
@@ -133,6 +146,8 @@ void processSequentialChunk(DataBase &db, const std::string &nomeArquivo,
     loader.loadData("faturamentoMetodo_" + nomeArquivo, cards, {"payment_method", "price"}, false);
     loader.loadData("faturamentoPaisUsuario_" + nomeArquivo, porPais, {"user_country", "price"}, false);
     loader.loadData("faturamentoTipoAssento_" + nomeArquivo, porClasse, {"seat_type", "price"}, false);
+    loader.loadData("flight_stats_" + nomeArquivo, flightStats, {"flight_number", "reservation_count"}, false);
+    loader.loadData("destination_stats_" + nomeArquivo, destinationStats, {"most_common_destination", "reservation_count"}, false);
     auto endLoad = Clock::now();
 
     // Update stats
@@ -141,7 +156,6 @@ void processSequentialChunk(DataBase &db, const std::string &nomeArquivo,
     stats.linesProcessed = df.numRows();
     stats.endTime = Clock::now();
 }
-
 
 void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeArquivo,
     DataFrame<std::string> &df,
@@ -156,18 +170,25 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
     auto flight_seats_df = std::make_shared<const DataFrame<std::string>>(
         extractor.extractFromCsv("../generator/flights_seats.csv")
     );
+    auto flights_df = std::make_shared<const DataFrame<std::string>>(
+        extractor.extractFromCsv("../generator/flights.csv")
+    );
 
     std::string tableSuffix = "_" + nomeArquivo + "_" + std::to_string(numThreads);
     db.createTable("faturamento" + tableSuffix, "(reservation_time TEXT PRIMARY KEY, price REAL)");
     db.createTable("faturamentoMetodo" + tableSuffix, "(payment_method TEXT PRIMARY KEY, price REAL)");
     db.createTable("faturamentoPaisUsuario" + tableSuffix, "(user_country TEXT PRIMARY KEY, price REAL)");
     db.createTable("faturamentoTipoAssento" + tableSuffix, "(seat_type TEXT PRIMARY KEY, price REAL)");
+    db.createTable("flight_stats" + tableSuffix, "(flight_number TEXT PRIMARY KEY, reservation_count INTEGER)");
+    db.createTable("destination_stats" + tableSuffix, "(most_common_destination TEXT PRIMARY KEY, reservation_count INTEGER)");
 
     ThreadPool pool(numThreads);
     Queue<int, DataFrame<std::string>> partitionQueue(numThreads);
     Queue<int, DataFrame<std::string>> processedQueue(numThreads);
     Queue<int, DataFrame<std::string>> userCountryQueue(numThreads);
     Queue<int, DataFrame<std::string>> seatTypeQueue(numThreads);
+    Queue<int, DataFrame<std::string>> flightStatsQueue(numThreads);
+    Queue<int, DataFrame<std::string>> destinationStatsQueue(numThreads);
 
     std::unordered_map<std::string, std::string> userIdToCountry;
     for (int i = 0; i < users_df->numRows(); ++i)
@@ -178,6 +199,9 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
         seatKeyToClass[flight_seats_df->getValue("flight_id", i) + "_" + flight_seats_df->getValue("seat", i)] =
             flight_seats_df->getValue("seat_class", i);
 
+    // Create shared handlers
+    auto sharedFlightEnricher = std::make_shared<FlightInfoEnricherHandler>(*flights_df);
+    auto sharedDestinationCounter = std::make_shared<DestinationCounterHandler>();
 
     // Partition the data
     size_t chunk_size = df.numRows() / numThreads;
@@ -202,26 +226,36 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
 
     for (int i = 0; i < numThreads; ++i)
     {
-        processingFutures.push_back(pool.addTask([&, i, sharedUserHandler, sharedSeatHandler]()
+        processingFutures.push_back(pool.addTask([&, i, sharedUserHandler, sharedSeatHandler, sharedFlightEnricher, sharedDestinationCounter]()
         {
             auto [idx, chunk] = partitionQueue.deQueue();
             auto processed = validationHandler.process(chunk);
             processed = statusFilterHandler.process(processed);
 
-            // Processa com handlers compartilhados (thread-safe)
-            DataFrame<std::string> countryRevenue = sharedUserHandler->process(processed);
+            // Process flight enrichment
+            auto flightResults = sharedFlightEnricher->processMulti({processed});
+            DataFrame<std::string> enrichedDf = flightResults[0];
+            DataFrame<std::string> flightStats = flightResults[1];
+            
+            // Process destination stats
+            DataFrame<std::string> destinationStats = sharedDestinationCounter->process(enrichedDf);
+            
+            // Process other handlers
+            DataFrame<std::string> countryRevenue = sharedUserHandler->process(enrichedDf);
+            DataFrame<std::string> seatRevenue = sharedSeatHandler->process(enrichedDf);
+
             userCountryQueue.enQueue({idx, countryRevenue});
-
-            DataFrame<std::string> seatRevenue = sharedSeatHandler->process(processed);
             seatTypeQueue.enQueue({idx, seatRevenue});
+            flightStatsQueue.enQueue({idx, flightStats});
+            destinationStatsQueue.enQueue({idx, destinationStats});
 
-            processed = dateHandler.process(processed);
+            processed = dateHandler.process(enrichedDf);
             processedQueue.enQueue({idx, processed});
         }));
     }
 
     for (auto &fut : processingFutures)
-    fut.get();
+        fut.get();
     auto endProcessing = Clock::now();
 
     // Aggregate all processed data
@@ -248,6 +282,22 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
         allSeatType = (i == 0) ? seatDf : allSeatType.concat(seatDf);
     }
 
+    // Aggregate flight stats
+    DataFrame<std::string> allFlightStats;
+    for (int i = 0; i < numThreads; ++i)
+    {
+        auto [idx, flightDf] = flightStatsQueue.deQueue();
+        allFlightStats = (i == 0) ? flightDf : allFlightStats.concat(flightDf);
+    }
+
+    // Aggregate destination stats
+    DataFrame<std::string> allDestinationStats;
+    for (int i = 0; i < numThreads; ++i)
+    {
+        auto [idx, destDf] = destinationStatsQueue.deQueue();
+        allDestinationStats = (i == 0) ? destDf : allDestinationStats.concat(destDf);
+    }
+
     // Final aggregation phase
     auto startAggregation = Clock::now();
     RevenueHandler revenueHandler;
@@ -258,10 +308,10 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
 
     auto aggregatedRevenue = revenue.groupby("reservation_time", "price");
     auto aggregatedCards = cards.groupby("payment_method", "price");
-
-    // Agrupar dados de país (já processados no handler)
-    DataFrame<std::string> aggregatedUserCountry = allUserCountry.groupby("user_country", "price");
-    DataFrame<std::string> aggregatedSeatType = allSeatType.groupby("seat_type", "price");
+    auto aggregatedFlightStats = allFlightStats.groupby("flight_number", "reservation_count");
+    auto aggregatedDestinationStats = allDestinationStats.groupby("most_common_destination", "reservation_count");
+    auto aggregatedUserCountry = allUserCountry.groupby("user_country", "price");
+    auto aggregatedSeatType = allSeatType.groupby("seat_type", "price");
     auto endAggregation = Clock::now();
 
     // Load all data into DB
@@ -271,6 +321,8 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
     loader.loadData("faturamentoMetodo" + tableSuffix, aggregatedCards, {"payment_method", "price"}, false);
     loader.loadData("faturamentoPaisUsuario" + tableSuffix, aggregatedUserCountry, {"user_country", "price"}, false);
     loader.loadData("faturamentoTipoAssento" + tableSuffix, aggregatedSeatType, {"seat_type", "price"}, false);
+    loader.loadData("flight_stats" + tableSuffix, aggregatedFlightStats, {"flight_number", "reservation_count"}, false);
+    loader.loadData("destination_stats" + tableSuffix, aggregatedDestinationStats, {"most_common_destination", "reservation_count"}, false);
     auto endLoad = Clock::now();
 
     long aggregationTime = std::chrono::duration_cast<std::chrono::milliseconds>(endAggregation - startAggregation).count();
@@ -279,20 +331,19 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
     switch (numThreads)
     {
         case 4:
-        stats.parallel4ProcessingTime = processingTime + aggregationTime;
-        stats.parallel4LoadTime = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad).count();
-    break;
+            stats.parallel4ProcessingTime = processingTime + aggregationTime;
+            stats.parallel4LoadTime = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad).count();
+            break;
         case 8:
-        stats.parallel8ProcessingTime = processingTime + aggregationTime;
-        stats.parallel8LoadTime = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad).count();
-    break;
+            stats.parallel8ProcessingTime = processingTime + aggregationTime;
+            stats.parallel8LoadTime = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad).count();
+            break;
         case 12:
-        stats.parallel12ProcessingTime = processingTime + aggregationTime;
-        stats.parallel12LoadTime = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad).count();
-    break;
+            stats.parallel12ProcessingTime = processingTime + aggregationTime;
+            stats.parallel12LoadTime = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad).count();
+            break;
     }
 }
-
 
 void Test()
 {
@@ -405,5 +456,6 @@ void Test()
 int main()
 {
     Test();
+    
     return 0;
 }
