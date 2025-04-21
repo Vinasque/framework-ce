@@ -359,6 +359,7 @@ void Test()
 
         // Extrai dados do banco SQLite
         DataFrame<std::string> df = extractor.extractFromSqlite(dbFilePath, tableName);
+        // df.print();
 
         // Verifica se há dados para processar
         if (df.numRows() > 0) {

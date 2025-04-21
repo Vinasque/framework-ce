@@ -86,8 +86,8 @@ public:
             }
         } else if (bMock) {
             // Inserção em massa no modo mock (mais rápido)
-            // std::cout << "Tamanho do DF subindo: " << df.numRows() << std::endl;
-            database.bulkInsert(df);
+            database.bulkInsert(table_name, df, columns);
+            // database.printTable(table_name);
         } else {
             // Para outras tabelas, faz a inserção padrão em massa
             std::string insertQuery = "INSERT INTO " + table_name + " (";

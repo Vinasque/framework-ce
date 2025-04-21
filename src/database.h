@@ -88,32 +88,49 @@ public:
         }
     }
 
-    // Método bulk insert para inserir todos os dados de uma vez
-    void bulkInsert(const DataFrame<std::string>& df) {
+    void bulkInsert(const std::string& table_name, 
+        const DataFrame<std::string>& df, 
+        const std::vector<std::string>& columns) {
+
         sqlite3_stmt *stmt;
 
-        // Prepara a query de inserção
-        std::string insertQuery = "INSERT INTO MockData (flight_id, seat, user_id, customer_name, status, payment_method, reservation_time, price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-        
+        // Começa a construção da query de inserção
+        std::string insertQuery = "INSERT INTO " + table_name + " (";
+
+        // Adiciona as colunas à query
+        for (size_t i = 0; i < columns.size(); ++i) {
+            insertQuery += columns[i];
+            if (i < columns.size() - 1) {
+                insertQuery += ", ";
+            }
+        }
+        insertQuery += ") VALUES (";
+
+        // Adiciona os placeholders '?' para os valores
+        for (size_t i = 0; i < columns.size(); ++i) {
+            insertQuery += "?";
+            if (i < columns.size() - 1) {
+                insertQuery += ", ";
+            }
+        }
+        insertQuery += ")";
+
+        // std::cout <<insertQuery << std::endl;
+
+        // Prepara a query
         sqlite3_prepare_v2(db, insertQuery.c_str(), -1, &stmt, nullptr);
-        
+
         // Inicia a transação
         sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
 
-        // Inserir os dados em massa
+        // Insere os dados em massa
         for (int i = 0; i < df.numRows(); ++i) {
-            sqlite3_bind_text(stmt, 1, df.getValue("flight_id", i).c_str(), -1, SQLITE_STATIC);
-            sqlite3_bind_text(stmt, 2, df.getValue("seat", i).c_str(), -1, SQLITE_STATIC);
-            sqlite3_bind_text(stmt, 3, df.getValue("user_id", i).c_str(), -1, SQLITE_STATIC);
-            sqlite3_bind_text(stmt, 4, df.getValue("customer_name", i).c_str(), -1, SQLITE_STATIC);
-            sqlite3_bind_text(stmt, 5, df.getValue("status", i).c_str(), -1, SQLITE_STATIC);
-            sqlite3_bind_text(stmt, 6, df.getValue("payment_method", i).c_str(), -1, SQLITE_STATIC);
-            sqlite3_bind_text(stmt, 7, df.getValue("reservation_time", i).c_str(), -1, SQLITE_STATIC);
-            sqlite3_bind_text(stmt, 8, df.getValue("price", i).c_str(), -1, SQLITE_STATIC);
-
-            // Executa a inserção da linha
+            for (size_t j = 0; j < columns.size(); ++j) {
+                // std::cout << "Binding column '" << columns[j] << "' with value: " << value.c_str() << std::endl;
+                sqlite3_bind_text(stmt, j + 1, df.getValue(columns[j], i).c_str(), -1, SQLITE_TRANSIENT);
+            }
             sqlite3_step(stmt);
-            sqlite3_reset(stmt);  // Reseta o statement para a próxima linha
+            sqlite3_reset(stmt);
         }
 
         // Finaliza a transação
