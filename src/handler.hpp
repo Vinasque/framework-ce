@@ -256,33 +256,42 @@ public:
 };
 
 class DestinationCounterHandler : public BaseHandler {
-public:
-    DataFrame<std::string> process(DataFrame<std::string>& enrichedDf) override {
-        DataFrame<std::string> resultDf;
+    public:
+        DataFrame<std::string> process(DataFrame<std::string>& enrichedDf) override {
+            DataFrame<std::string> resultDf;
+    
+            if (enrichedDf.numRows() == 0 || !enrichedDf.columnExists("destination")) {
+                return resultDf;
+            }
 
-        if (enrichedDf.numRows() == 0 || !enrichedDf.columnExists("destination")) {
+            std::map<std::string, int> destinationCount;
+            for (int i = 0; i < enrichedDf.numRows(); ++i) {
+                destinationCount[enrichedDf.getValue("destination", i)]++;
+            }
+    
+            std::vector<std::pair<std::string, int>> sortedDestinations(
+                destinationCount.begin(), destinationCount.end());
+            
+            std::sort(sortedDestinations.begin(), sortedDestinations.end(),
+                [](const auto& a, const auto& b) {
+                    return a.second > b.second; 
+                });
+
+            Series<std::string> countries;
+            Series<std::string> counts;
+    
+            for (const auto& [country, count] : sortedDestinations) {
+                countries.addElement(country);
+                counts.addElement(std::to_string(count));
+            }
+    
+            resultDf.addColumn("destination", countries);
+            resultDf.addColumn("reservation_count", counts);
+    
             return resultDf;
         }
-
-        std::map<std::string, int> destinationCount;
-        for (int i = 0; i < enrichedDf.numRows(); ++i) {
-            destinationCount[enrichedDf.getValue("destination", i)]++;
-        }
-
-        auto [mostCommon, count] = *std::max_element(
-            destinationCount.begin(),
-            destinationCount.end(),
-            [](const auto& a, const auto& b) { return a.second < b.second; });
-
-        resultDf.addColumn("most_common_destination",
-            Series<std::string>::createEmpty(1, mostCommon));
-        resultDf.addColumn("reservation_count",
-            Series<std::string>::createEmpty(1, std::to_string(count)));
-
-        return resultDf;
-    }
-};
-
+    };
+    
 class UsersCountryRevenue : public BaseHandler {
     private:
         const std::unordered_map<std::string, std::string>& userIdToCountry;
