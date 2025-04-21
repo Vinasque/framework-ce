@@ -179,10 +179,19 @@ int extractFlightNumber(const std::string& flightId) {
         try {
             return std::stoi(flightId.substr(dashPos + 1));
         } catch (...) {
-            return -1;
+            try {
+                return std::stoi(flightId);
+            } catch (...) {
+                return -1;
+            }
         }
     }
-    return -1;
+    
+    try {
+        return std::stoi(flightId);
+    } catch (...) {
+        return -1;
+    }
 }
 
 class FlightInfoEnricherHandler : public BaseHandler {
@@ -212,18 +221,24 @@ public:
 
         std::unordered_map<int, int> flightCounts;
 
+        std::unordered_map<int, int> flightNumberToIndex;
+        for (int j = 0; j < flightsDf.numRows(); ++j) {
+            int flightNum = extractFlightNumber(flightsDf.getValue("flight_id", j));
+            if (flightNum != -1) {
+                flightNumberToIndex[flightNum] = j;
+            }
+        }
+
         for (int i = 0; i < reservationsDf.numRows(); ++i) {
             int flightNum = extractFlightNumber(reservationsDf.getValue("flight_id", i));
             if (flightNum == -1) continue;
 
             flightCounts[flightNum]++;
 
-            for (int j = 0; j < flightsDf.numRows(); ++j) {
-                if (extractFlightNumber(flightsDf.getValue("flight_id", j)) == flightNum) {
-                    reservationsDf.updateValue("origin", i, flightsDf.getValue("from", j));
-                    reservationsDf.updateValue("destination", i, flightsDf.getValue("to", j));
-                    break;
-                }
+            if (flightNumberToIndex.count(flightNum)) {
+                int flightIdx = flightNumberToIndex[flightNum];
+                reservationsDf.updateValue("origin", i, flightsDf.getValue("from", flightIdx));
+                reservationsDf.updateValue("destination", i, flightsDf.getValue("to", flightIdx));
             }
         }
 
