@@ -3,7 +3,7 @@ TARGET_DIR = ./exes
 TARGET = $(TARGET_DIR)/main.exe
 
 # Lista dos seus arquivos C++ (adicione/remova aqui)
-CPP_SOURCES = main2.cpp
+CPP_SOURCES = main.cpp
 
 # Regra principal
 all:
