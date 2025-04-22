@@ -73,32 +73,56 @@ struct TestResults
 
 void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeArquivo,
     DataFrame<std::string> &df,
-    TestResults::RunStats &stats)
+    TestResults::RunStats &stats,
+    bool bfirstTime)
 {
     auto start = Clock::now();
+    std::string tableSuffix = "_" + nomeArquivo + "_" + std::to_string(numThreads);
+
+    std::shared_ptr<const DataFrame<std::string>> users_df;
+    std::shared_ptr<const DataFrame<std::string>> flight_seats_df;
+    std::shared_ptr<const DataFrame<std::string>> flights_df;
+    std::unordered_map<std::string, std::string> userIdToCountry;
+    std::unordered_map<std::string, std::string> seatKeyToClass;
+    std::vector<DataFrame<std::string>> dfMeanPrices;
 
     Extractor extractor;
-    auto users_df = std::make_shared<const DataFrame<std::string>>(
+    users_df = std::make_shared<const DataFrame<std::string>>(
         extractor.extractFromCsv("../generator/users.csv")
     );
-    auto flight_seats_df = std::make_shared<const DataFrame<std::string>>(
+    flight_seats_df = std::make_shared<const DataFrame<std::string>>(
         extractor.extractFromCsv("../generator/flights_seats.csv")
     );
-    auto flights_df = std::make_shared<const DataFrame<std::string>>(
+    flights_df = std::make_shared<const DataFrame<std::string>>(
         extractor.extractFromCsv("../generator/flights.csv")
     );
 
-    std::string tableSuffix = "_" + nomeArquivo + "_" + std::to_string(numThreads);
-    db.createTable("faturamento" + tableSuffix, "(reservation_time TEXT PRIMARY KEY, price REAL)");
-    db.createTable("faturamentoMetodo" + tableSuffix, "(payment_method TEXT PRIMARY KEY, price REAL)");
-    db.createTable("faturamentoPaisUsuario" + tableSuffix, "(user_country TEXT PRIMARY KEY, price REAL)");
-    db.createTable("faturamentoTipoAssento" + tableSuffix, "(seat_type TEXT PRIMARY KEY, price REAL)");
-    db.createTable("flight_stats" + tableSuffix, "(flight_number TEXT PRIMARY KEY, reservation_count INTEGER)");
-    db.createTable("destination_stats" + tableSuffix, "(destination TEXT PRIMARY KEY, reservation_count INTEGER)");
+    if (bfirstTime)
+    {
+        db.createTable("faturamento" + tableSuffix, "(reservation_time TEXT PRIMARY KEY, price REAL)");
+        db.createTable("faturamentoMetodo" + tableSuffix, "(payment_method TEXT PRIMARY KEY, price REAL)");
+        db.createTable("faturamentoPaisUsuario" + tableSuffix, "(user_country TEXT PRIMARY KEY, price REAL)");
+        db.createTable("faturamentoTipoAssento" + tableSuffix, "(seat_type TEXT PRIMARY KEY, price REAL)");
+        db.createTable("flight_stats" + tableSuffix, "(flight_number TEXT PRIMARY KEY, reservation_count INTEGER)");
+        db.createTable("destination_stats" + tableSuffix, "(destination TEXT PRIMARY KEY, reservation_count INTEGER)");
+        db.createTable("precoMedioPorDestino" + tableSuffix, "(destination TEXT PRIMARY KEY, mean_avg_price REAL)");
+        db.createTable("precoMedioPorAirline" + tableSuffix, "(airline TEXT PRIMARY KEY, mean_avg_price REAL)");
+
+        MeanPricePerDestination_AirlineHandler MeanPriceHandler;
+        dfMeanPrices = MeanPriceHandler.processMultiShared({flight_seats_df, flights_df});
+        dfMeanPrices[0].renameColumn("to", "destination");
+    }
+
+    for (int i = 0; i < users_df->numRows(); ++i)
+            userIdToCountry[users_df->getValue("user_id", i)] = users_df->getValue("country", i);
     
-    
-    db.createTable("precoMedioPorDestino" + tableSuffix, "(destination TEXT PRIMARY KEY, mean_avg_price REAL)");
-    db.createTable("precoMedioPorAirline" + tableSuffix, "(airline TEXT PRIMARY KEY, mean_avg_price REAL)");
+    for (int i = 0; i < flight_seats_df->numRows(); ++i)
+        seatKeyToClass[flight_seats_df->getValue("flight_id", i) + "_" + flight_seats_df->getValue("seat", i)] =
+            flight_seats_df->getValue("seat_class", i);
+
+    // Create shared handlers
+    auto sharedFlightEnricher = std::make_shared<FlightInfoEnricherHandler>(*flights_df);
+    auto sharedDestinationCounter = std::make_shared<DestinationCounterHandler>();
 
     ThreadPool pool(numThreads);
     Queue<int, DataFrame<std::string>> partitionQueue(numThreads);
@@ -107,19 +131,6 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
     Queue<int, DataFrame<std::string>> seatTypeQueue(numThreads);
     Queue<int, DataFrame<std::string>> flightStatsQueue(numThreads);
     Queue<int, DataFrame<std::string>> destinationStatsQueue(numThreads);
-
-    std::unordered_map<std::string, std::string> userIdToCountry;
-    for (int i = 0; i < users_df->numRows(); ++i)
-        userIdToCountry[users_df->getValue("user_id", i)] = users_df->getValue("country", i);
-
-    std::unordered_map<std::string, std::string> seatKeyToClass;
-    for (int i = 0; i < flight_seats_df->numRows(); ++i)
-        seatKeyToClass[flight_seats_df->getValue("flight_id", i) + "_" + flight_seats_df->getValue("seat", i)] =
-            flight_seats_df->getValue("seat_class", i);
-
-    // Create shared handlers
-    auto sharedFlightEnricher = std::make_shared<FlightInfoEnricherHandler>(*flights_df);
-    auto sharedDestinationCounter = std::make_shared<DestinationCounterHandler>();
 
     // Partition the data
     size_t chunk_size = df.numRows() / numThreads;
@@ -133,10 +144,6 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
     // Processing phase
     auto startProcessing = Clock::now();
     std::vector<std::future<void>> processingFutures;
-
-    MeanPricePerDestination_AirlineHandler MeanPriceHandler;
-    auto dfMeanPrices = MeanPriceHandler.processMultiShared({flight_seats_df, flights_df});
-    dfMeanPrices[0].renameColumn("to", "destination");
 
     ValidationHandler validationHandler;
     StatusFilterHandler statusFilterHandler("confirmed");
@@ -245,8 +252,11 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
     loader.loadData("faturamentoTipoAssento" + tableSuffix, aggregatedSeatType, {"seat_type", "price"}, false);
     loader.loadData("flight_stats" + tableSuffix, aggregatedFlightStats, {"flight_number", "reservation_count"}, false);
     loader.loadData("destination_stats" + tableSuffix, aggregatedDestinationStats, {"destination", "reservation_count"}, false);
-    loader.loadData("precoMedioPorDestino" + tableSuffix, dfMeanPrices[0], {"destination", "mean_avg_price"}, false);
-    loader.loadData("precoMedioPorAirline" + tableSuffix, dfMeanPrices[1], {"airline", "mean_avg_price"}, false);
+    if (bfirstTime)
+    {
+        loader.loadData("precoMedioPorDestino" + tableSuffix, dfMeanPrices[0], {"destination", "mean_avg_price"}, false);
+        loader.loadData("precoMedioPorAirline" + tableSuffix, dfMeanPrices[1], {"airline", "mean_avg_price"}, false);
+    }
     auto endLoad = Clock::now();
 
     long aggregationTime = std::chrono::duration_cast<std::chrono::milliseconds>(endAggregation - startAggregation).count();
@@ -285,6 +295,8 @@ void Test()
     std::string createQuery = "(flight_id TEXT, seat TEXT, user_id BIGINT, customer_name TEXT, status TEXT, payment_method TEXT, reservation_time DATE, price FLOAT)";
     dbMock.createTable("MockData", createQuery);
 
+    bool bFirstTime = true;
+
     printTableHeader();
 
     auto processFullPipeline = [&](const std::string &triggerType, DataFrame<std::string> df)
@@ -300,10 +312,12 @@ void Test()
         stats.linesProcessed = df.numRows();
 
         // Run all pipeline variants
-        processParallelChunk(1, db, "orders", df, stats);
-        processParallelChunk(4, db, "orders", df, stats);
-        processParallelChunk(8, db, "orders", df, stats);
-        processParallelChunk(12, db, "orders", df, stats);
+        processParallelChunk(1, db, "orders", df, stats, bFirstTime);
+        processParallelChunk(4, db, "orders", df, stats, bFirstTime);
+        processParallelChunk(8, db, "orders", df, stats, bFirstTime);
+        processParallelChunk(12, db, "orders", df, stats, bFirstTime);
+
+        if (bFirstTime) { bFirstTime = false; }
 
         results.allRuns.push_back(stats);
 
