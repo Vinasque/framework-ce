@@ -1,147 +1,139 @@
 import sqlite3
-import matplotlib.pyplot as plt
-import numpy as np
+import plotly.express as px
+import pandas as pd
+import streamlit as st
 
-# Função para ler dados do SQLite e retornar como listas
+# Função para ler dados do SQLite e retornar como DataFrames
 def read_data_from_sqlite(db_path):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # Executar as queries para pegar os dados da tabela
     cursor.execute("SELECT payment_method, price FROM faturamentoMetodo_orders_4")
     payment_rows = cursor.fetchall()
 
     cursor.execute("SELECT reservation_time, price FROM faturamento_orders_4")
     date_rows = cursor.fetchall()
-    
+
     cursor.execute("SELECT user_country, price FROM faturamentoPaisUsuario_orders_4")
     userC_rows = cursor.fetchall()
-    
+
     cursor.execute("SELECT seat_type, price FROM faturamentoTipoAssento_orders_4")
     seatT_rows = cursor.fetchall()
 
     cursor.execute("SELECT flight_number, reservation_count FROM flight_stats_orders_4")
     flight_stats = cursor.fetchall()
-    
+
     cursor.execute("SELECT destination, reservation_count FROM destination_stats_orders_4")
     destination_stats = cursor.fetchall()
 
     conn.close()
 
-    flight_numbers = [row[0] for row in flight_stats]
-    flight_counts = [row[1] for row in flight_stats]
+    payment_df = pd.DataFrame(payment_rows, columns=["payment_method", "price"])
+    date_df = pd.DataFrame(date_rows, columns=["reservation_time", "price"])
+    userC_df = pd.DataFrame(userC_rows, columns=["user_country", "price"])
+    seatT_df = pd.DataFrame(seatT_rows, columns=["seat_type", "price"])
+    flight_df = pd.DataFrame(flight_stats, columns=["flight_number", "reservation_count"])
+    destination_df = pd.DataFrame(destination_stats, columns=["destination", "reservation_count"])
+
+    # Top 10 voos com mais reservas
+    top_flights = flight_df.sort_values(by="reservation_count", ascending=False).head(10)
+
+    # Arredondar com 2 casas decimais
+    for df in [payment_df, date_df, userC_df, seatT_df]:
+        df["price"] = df["price"].astype(float).round(2)
+    for df in [flight_df, destination_df, top_flights]:
+        df["reservation_count"] = df["reservation_count"].astype(float).round(2)
+
+    return payment_df, date_df, userC_df, seatT_df, top_flights, destination_df
+
+# Função auxiliar para formatar valores em real com pontos a cada milhar
+def format_brl(value):
+    return "R$ " + "{:,.2f}".format(value).replace(",", "X").replace(".", ",").replace("X", ".")
+
+def plot_revenue(payment_df, date_df, userC_df, seatT_df, top_flights, destination_df):
+    date_df['reservation_time'] = pd.to_datetime(date_df['reservation_time'])
+    date_df = date_df.sort_values(by="reservation_time")  # Garantir que as datas estão ordenadas
+    date_df = date_df.iloc[1:-1]
     
-    destinations = [row[0] for row in destination_stats]
-    destination_counts = [row[1] for row in destination_stats]
+    st.subheader("📈 Receita Diária")
+    st.markdown("Evolução da receita ao longo do tempo, considerando todas as vendas de passagem.")
+    fig1 = px.line(date_df, x="reservation_time", y="price", title="Receita Diária")
+    fig1.update_traces(mode='lines+markers', hovertemplate='Data: %{x}<br>Receita: %{y:,.2f} R$')
+    st.plotly_chart(fig1)
 
-    # Dados por método de pagamento
-    payment_methods = [row[0] for row in payment_rows]
-    payment_revenues = [row[1] for row in payment_rows]
+    st.divider()
 
-    # Dados por data
-    dates = [row[0] for row in date_rows]
-    revenues = [row[1] for row in date_rows]
+    st.subheader("💳 Receita por Método de Pagamento")
+    st.markdown("Total de receita agrupado por método de pagamento utilizado pelos clientes.")
+    payment_df = payment_df.sort_values(by="price", ascending=False)
+    fig2 = px.bar(payment_df, x="payment_method", y="price", title="Receita por Método de Pagamento")
+    fig2.update_traces(hovertemplate='Método: %{x}<br>Receita: %{y:,.2f} R$')
+    st.plotly_chart(fig2)
 
-    # Dados por país do usuário
-    countries = [row[0] for row in userC_rows]
-    country_revenues = [row[1] for row in userC_rows]
-    
-    # Dados por país do usuário
-    seat_types = [row[0] for row in seatT_rows]
-    seat_revenues = [row[1] for row in seatT_rows]
+    st.divider()
 
-    # Dados top 10 voos com mais reservas
-    flight_data = sorted(zip(flight_numbers, flight_counts), 
-                key=lambda x: x[1], 
-                reverse=True)
-    top_flights = flight_data[:10]
-    top_flight_numbers = [x[0] for x in top_flights]
-    top_flight_counts = [x[1] for x in top_flights]
-    
-    return (payment_methods, payment_revenues, dates, revenues, 
-            countries, country_revenues, seat_types, seat_revenues,
-            top_flight_numbers, top_flight_counts, destinations, destination_counts)
+    st.subheader("🌍 Receita por País do Usuário")
+    st.markdown("Receita total gerada, agrupada por país do usuário.")
+    userC_df = userC_df.sort_values(by="price", ascending=False)
+    fig3 = px.bar(userC_df, x="user_country", y="price", title="Receita por País do Usuário")
+    fig3.update_traces(hovertemplate='País: %{x}<br>Receita: %{y:,.2f} R$')
+    st.plotly_chart(fig3)
 
-def plot_revenue(dates, revenues, payment_methods, payment_revenues, 
-                countries, country_revenues, seat_types, seat_revenues,
-                top_flight_numbers, top_flight_counts, destinations, destination_counts):
-    
-    # Criar figura com 2 linhas e 3 colunas de gráficos
-    fig, axs = plt.subplots(2, 3, figsize=(24, 15))
-    
-    # Gráfico 1: Receita diária (superior esquerdo)
-    axs[0, 0].plot(dates, revenues, marker='o', linestyle='-', color='b', label='Receita Diária')
-    axs[0, 0].set_title('Receita Diária')
-    axs[0, 0].tick_params(axis='x', rotation=45)
-    axs[0, 0].set_xlabel('Data', fontsize=10)
-    axs[0, 0].set_ylabel('Receita (R$)', fontsize=10)
-    axs[0, 0].tick_params(axis='x', rotation=45)
-    axs[0, 0].grid(True, linestyle='--', linewidth=0.5)
-    axs[0, 0].legend(fontsize=9)
-    axs[0, 0].set_xticks(np.arange(0, len(dates), step=max(1, int(len(dates)/6))))
-    axs[0, 0].set_xticklabels(dates[::max(1, int(len(dates)/6))], rotation=45)
-    
-    # Gráfico 2: Métodos de pagamento (superior meio)
-    axs[0, 1].bar(payment_methods, payment_revenues, color='g', alpha=0.7)
-    axs[0, 1].set_xlabel('Método de Pagamento', fontsize=10)
-    axs[0, 1].set_ylabel('Receita (R$)', fontsize=10)
-    axs[0, 1].set_title('Receita por Método de Pagamento', fontsize=12)
-    axs[0, 1].tick_params(axis='x', rotation=45)
-    axs[0, 1].grid(True, axis='y', linestyle='--', linewidth=0.5)
-    axs[0, 1].legend(['Receita por Método'], fontsize=9)
+    st.divider()
 
+    st.subheader("🪑 Receita por Tipo de Assento")
+    st.markdown("Receita total por tipo de assento reservado (Econômico ou Primeira Classe).")
+    seatT_df = seatT_df.sort_values(by="price", ascending=False)
+    fig4 = px.bar(seatT_df, x="seat_type", y="price", title="Receita por Tipo de Assento")
+    fig4.update_traces(hovertemplate='Assento: %{x}<br>Receita: %{y:,.2f} R$')
+    st.plotly_chart(fig4)
 
-    # Gráfico 3: Países (superior direito)
-    axs[0, 2].bar(countries, country_revenues, color='orange', alpha=0.7)
-    axs[0, 2].set_xlabel('País do Usuário', fontsize=10)
-    axs[0, 2].set_ylabel('Receita (R$)', fontsize=10)
-    axs[0, 2].set_title('Receita por País do Usuário', fontsize=12)
-    axs[0, 2].tick_params(axis='x', rotation=45)
-    axs[0, 2].grid(True, axis='y', linestyle='--', linewidth=0.5)
-    axs[0, 2].legend(['Receita por País'], fontsize=9)
+    st.divider()
 
-    # Gráfico 4: Tipos de assento (inferior esquerdo)
-    axs[1, 0].bar(seat_types, seat_revenues, color='purple', alpha=0.7)
-    axs[1, 0].set_xlabel('Tipo de Assento', fontsize=10)
-    axs[1, 0].set_ylabel('Receita (R$)', fontsize=10)
-    axs[1, 0].set_title('Receita por Tipo de Assento', fontsize=12)
-    axs[1, 0].tick_params(axis='x', rotation=45)
-    axs[1, 0].grid(True, axis='y', linestyle='--', linewidth=0.5)
-    axs[1, 0].legend(['Receita por Assento'], fontsize=9)
-    
-    # Gráfico 5: Voos mais populares (inferior meio)
-    axs[1, 1].bar(top_flight_numbers, top_flight_counts, color='red', alpha=0.7)
-    axs[1, 1].tick_params(axis='x', rotation=45)
-    axs[1, 1].set_xlabel('Número do Voo', fontsize=10)
-    axs[1, 1].set_ylabel('Número de Reservas', fontsize=10)
-    axs[1, 1].set_title('Top 10 Voos com Mais Reservas', fontsize=12)
-    axs[1, 1].tick_params(axis='x', rotation=45)
-    axs[1, 1].grid(True, axis='y', linestyle='--', linewidth=0.5)
-    axs[1, 1].legend(['Reservas por Voo'], fontsize=9)
-    
-    # Gráfico 6: Destinos mais populares (inferior direito)
-    axs[1, 2].bar(destinations, destination_counts, color='blue', alpha=0.7)
-    axs[1, 2].tick_params(axis='x', rotation=45)
-    axs[1, 2].set_xlabel('País', fontsize=10)
-    axs[1, 2].set_ylabel('Número de Voos', fontsize=10)
-    axs[1, 2].set_title('Destinos Mais Populares', fontsize=12)
-    axs[1, 2].tick_params(axis='x', rotation=45)
-    axs[1, 2].grid(True, axis='y', linestyle='--', linewidth=0.5)
-    axs[1, 2].legend(['Reservas de Voo para cada País'], fontsize=9)
+    st.subheader("✈️ Top 10 Voos com Mais Reservas")
+    st.markdown("Lista dos 10 voos mais populares com base no número de reservas.")
+    top_flights = top_flights.sort_values(by="reservation_count", ascending=False)
+    top_flights["flight_number"] = "Voo " + top_flights["flight_number"].astype(str)
+    fig5 = px.bar(top_flights, x="flight_number", y="reservation_count", title="Top 10 Voos com Mais Reservas")
+    fig5.update_traces(hovertemplate='%{x}<br>Reservas: %{y:,.0f}')
+    st.plotly_chart(fig5)
 
-    plt.tight_layout()
-    plt.show()
+    st.divider()
 
-# Função principal
+    st.subheader("📍 Destinos Mais Populares")
+    st.markdown("Quantidade de reservas por destino final (país de chegada do avião).")
+    destination_df = destination_df.sort_values(by="reservation_count", ascending=False)
+    fig6 = px.bar(destination_df, x="destination", y="reservation_count", title="Destinos Mais Populares")
+    fig6.update_traces(hovertemplate='Destino: %{x}<br>Reservas: %{y:,.0f}')
+    st.plotly_chart(fig6)
+
 def main():
-    db_path = 'databases/Database.db'
-    (payment_methods, payment_revenues, dates, revenues, 
-     countries, country_revenues, seat_types, seat_revenues,
-     flight_numbers, flight_counts, destinations, destination_counts) = read_data_from_sqlite(db_path)
-    
-    plot_revenue(dates, revenues, payment_methods, payment_revenues, 
-                countries, country_revenues, seat_types, seat_revenues,
-                flight_numbers, flight_counts, destinations, destination_counts)
+    st.set_page_config(page_title="Dashboard de Vendas de Voos")
+
+    st.markdown("""
+        <div style="text-align: center;">
+            <h4>FGV - Computação Escalável</h4>
+            <h1 style="margin-top: 20px;">MICRO-FRAMEWORK: <br> VENDA DE PASSAGENS AÉREAS</h1>
+            <h6 style="margin-top: 20px;">Guilherme Buss</h6>
+            <h6>Guilherme Carvalho</h6>
+            <h6>Gustavo Bianchi</h6>
+            <h6>João Gabriel</h6>
+            <h6>Vinícius Nascimento</h6>
+        </div>
+    """, unsafe_allow_html=True)
+
+    st.title("📊 Dashboard de Análise de Vendas de Voos")
+    st.markdown("Este painel interativo mostra estatísticas detalhadas sobre as vendas de voos, "
+                "permitindo analisar receitas, preferências dos clientes e desempenho de rotas. "
+                "Todos gráficos são iterativos!")
+
+    db_path = '../databases/Database.db'
+
+    try:
+        payment_df, date_df, userC_df, seatT_df, top_flights, destination_df = read_data_from_sqlite(db_path)
+        plot_revenue(payment_df, date_df, userC_df, seatT_df, top_flights, destination_df)
+    except Exception as e:
+        st.error(f"Erro ao carregar os dados do banco de dados: {e}")
 
 if __name__ == "__main__":
     main()
