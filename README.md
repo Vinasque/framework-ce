@@ -17,7 +17,7 @@ Framework para desenvolvimento de pipelines de processamento de dados utilizando
 - **pandas**: Biblioteca para análise e manipulação de dados
 - **plotly**: Biblioteca para visualização de dados interativos
 
-### Instalação no Windows (MSYS2)
+### Instalação no Windows (MSYS2/bash)
 ```bash
 pacman -S make
 pacman -S mingw-w64-x86_64-sqlite3
@@ -34,7 +34,7 @@ make clean # Remove arquivos temporários
 
 ## Estrutura do Projeto
 ```
-ETL_framework/
+framework-ce/
 ├── dashboard/                  # Pasta do dashboard
 │   ├── main.py                 # Executável principal do dashboard
 │   └── requirements.txt        # Bibliotecas necessárias
