@@ -367,5 +367,72 @@ public:
     }
 };
 
+class MeanPricePerDestination_AirlineHandler : public BaseHandler {
+public:
+    // Método adicional para shared_ptr
+    std::vector<DataFrame<std::string>> processMultiShared(
+        const std::vector<std::shared_ptr<const DataFrame<std::string>>>& inputDfs) {
+        
+        std::vector<DataFrame<std::string>> rawDfs;
+        for (const auto& df_ptr : inputDfs) {
+            rawDfs.push_back(*df_ptr);
+        }
+        return processMulti(rawDfs);
+    }
+
+    std::vector<DataFrame<std::string>> processMulti(
+        const std::vector<DataFrame<std::string>>& inputDfs) override {
+        
+        if (inputDfs.size() < 2) {
+            throw std::runtime_error("São necessários pelo menos 2 DataFrames como entrada");
+        }
+
+        DataFrame<std::string> df1 = inputDfs[0]; // DataFrame de assentos
+        DataFrame<std::string> df2 = inputDfs[1]; // DataFrame de voos
+
+        // Verificar colunas necessárias
+        if (!df1.columnExists("flight_id") || !df1.columnExists("price")) {
+            throw std::runtime_error("DataFrame 1 deve conter colunas 'flight_id' e 'price'");
+        }
+
+        if (!df2.columnExists("flight_id")) {
+            throw std::runtime_error("DataFrame 2 deve conter coluna 'flight_id'");
+        }
+
+        // Calcular preço médio
+        DataFrame<std::string> avgPriceDf = df1.groupbyMean("flight_id", "price");
+
+        // Criar cópia do DataFrame de voos para não modificar o original
+        DataFrame<std::string> resultDf = df2;
+        resultDf.addColumn("avg_price", Series<std::string>::createEmpty(resultDf.numRows(), "0.0"));
+
+        // Mapear flight_id para índices
+        std::unordered_map<std::string, int> flightIdToIndex;
+        for (int i = 0; i < resultDf.numRows(); ++i) {
+            flightIdToIndex[resultDf.getValue("flight_id", i)] = i;
+        }
+
+        // Preencher preços médios
+        for (int i = 0; i < avgPriceDf.numRows(); ++i) {
+            std::string flightId = avgPriceDf.getValue("flight_id", i);
+            std::string avgPrice = avgPriceDf.getValue("mean_price", i);
+            
+            if (flightIdToIndex.count(flightId)) {
+                int flightIdx = flightIdToIndex[flightId];
+                resultDf.updateValue("avg_price", flightIdx, avgPrice);
+            }
+        }
+        
+        DataFrame<std::string> MeanPerDestiny = resultDf.groupbyMean("to", "avg_price");
+        DataFrame<std::string> MeanPerAirline = resultDf.groupbyMean("airline", "avg_price");
+        
+        return {MeanPerDestiny, MeanPerAirline};
+    }
+
+    DataFrame<std::string> process(DataFrame<std::string>& df) override {
+        throw std::runtime_error("Este handler requer dois DataFrames como entrada. Use processMulti().");
+    }
+};
+
 
 #endif // HANDLER_HPP
