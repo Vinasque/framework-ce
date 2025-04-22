@@ -234,7 +234,70 @@ public:
         return DataFrame<std::string>(columns, series);
     }
 
+    DataFrame<std::string> groupbyMean(const std::string& groupByColumn, const std::string& meanColumn) {
+        // Verificar se as colunas existem no DataFrame
+        int groupByColIdx = column_id(groupByColumn);
+        if (groupByColIdx == -1) {
+            throw std::invalid_argument("GroupBy column does not exist: " + groupByColumn);
+        }
+        
+        int meanColIdx = column_id(meanColumn);
+        if (meanColIdx == -1) {
+            throw std::invalid_argument("Mean column does not exist: " + meanColumn);
+        }
+    
+        // Utilizar um mapa para agrupar e calcular a média
+        struct GroupData {
+            double sum = 0.0;
+            int count = 0;
+        };
+        std::map<std::string, GroupData> groupedData;
+    
+        // Iterar sobre as linhas do DataFrame
+        for (int i = 0; i < numRows(); ++i) {
+            std::string groupByValue = getValue(groupByColumn, i);  // Obtém o valor da coluna de agrupamento
+            double currentValue = std::stod(getValue(meanColumn, i)); // Obtém o valor da coluna para média
+    
+            // Acumular valores para cálculo da média
+            groupedData[groupByValue].sum += currentValue;
+            groupedData[groupByValue].count++;
+        }
+    
+        // Preparar o DataFrame de resultado
+        std::vector<std::string> columns = {groupByColumn, "mean_" + meanColumn};
+        std::vector<Series<std::string>> series = {
+            Series<std::string>(),  // Coluna de agrupamento
+            Series<std::string>()   // Coluna de médias
+        };
+    
+        // Preencher as séries com os resultados agrupados
+        for (const auto& pair : groupedData) {
+            series[0].addElement(pair.first); // Adiciona o valor de agrupamento
+            
+            // Calcula a média e adiciona ao DataFrame
+            double mean = pair.second.sum / pair.second.count;
+            series[1].addElement(std::to_string(mean)); 
+        }
+    
+        // Retorna o DataFrame com o resultado do groupby
+        return DataFrame<std::string>(columns, series);
+    }
 
+    void renameColumn(const std::string& oldName, const std::string& newName) {
+        // Verifica se a coluna antiga existe
+        int colIdx = column_id(oldName);
+        if (colIdx == -1) {
+            throw std::invalid_argument("Column does not exist: " + oldName);
+        }
+        
+        // Verifica se o novo nome já existe (a menos que seja o mesmo nome)
+        if (oldName != newName && column_id(newName) != -1) {
+            throw std::invalid_argument("Column already exists: " + newName);
+        }
+        
+        // Atualiza o nome da coluna
+        columns[colIdx] = newName;
+    }
 
     void deleteLastLine() {
         if (shape.first == 0) {
