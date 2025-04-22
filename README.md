@@ -27,6 +27,16 @@ pacman -S mingw-w64-x86_64-sqlite3
 pip install streamlit pandas plotly
 ```
 
+### Criando 'mock data'
+Caso opte por gerar novamente os dados mock, basta executar os arquivos .py que estão dentro da pasta generator/. Atenção: certifique-se de executar os arquivos user_generator.py e flight_generator.py antes do orders_generator.py, já que as reservas devem ser de usuários e voos já criados.
+
+```bash
+cd generator/  # Entre na pasta generator
+python3 user_generator.py
+python3 flight_generator.py
+python3 orders_generator.py
+```
+
 ### Compilação do Dashboard em Streamlit 
 ```bash
 python3 -m streamlit run main.py
