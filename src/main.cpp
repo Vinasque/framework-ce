@@ -77,16 +77,7 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
 {
     auto start = Clock::now();
 
-    std::string tableSuffix = "_" + nomeArquivo + "_" + std::to_string(numThreads);
-    db.createTable("faturamento" + tableSuffix, "(reservation_time TEXT PRIMARY KEY, price REAL)");
-    db.createTable("faturamentoMetodo" + tableSuffix, "(payment_method TEXT PRIMARY KEY, price REAL)");
-    db.createTable("faturamentoPaisUsuario" + tableSuffix, "(user_country TEXT PRIMARY KEY, price REAL)");
-    db.createTable("faturamentoTipoAssento" + tableSuffix, "(seat_type TEXT PRIMARY KEY, price REAL)");
-    db.createTable("flight_stats" + tableSuffix, "(flight_number TEXT PRIMARY KEY, reservation_count INTEGER)");
-    db.createTable("destination_stats" + tableSuffix, "(destination TEXT PRIMARY KEY, reservation_count INTEGER)");
-
     Extractor extractor;
-
     auto users_df = std::make_shared<const DataFrame<std::string>>(
         extractor.extractFromCsv("../generator/users.csv")
     );
@@ -97,6 +88,15 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
         extractor.extractFromCsv("../generator/flights.csv")
     );
 
+    std::string tableSuffix = "_" + nomeArquivo + "_" + std::to_string(numThreads);
+    db.createTable("faturamento" + tableSuffix, "(reservation_time TEXT PRIMARY KEY, price REAL)");
+    db.createTable("faturamentoMetodo" + tableSuffix, "(payment_method TEXT PRIMARY KEY, price REAL)");
+    db.createTable("faturamentoPaisUsuario" + tableSuffix, "(user_country TEXT PRIMARY KEY, price REAL)");
+    db.createTable("faturamentoTipoAssento" + tableSuffix, "(seat_type TEXT PRIMARY KEY, price REAL)");
+    db.createTable("flight_stats" + tableSuffix, "(flight_number TEXT PRIMARY KEY, reservation_count INTEGER)");
+    db.createTable("destination_stats" + tableSuffix, "(destination TEXT PRIMARY KEY, reservation_count INTEGER)");
+    
+    
     db.createTable("precoMedioPorDestino" + tableSuffix, "(destination TEXT PRIMARY KEY, mean_avg_price REAL)");
     db.createTable("precoMedioPorAirline" + tableSuffix, "(airline TEXT PRIMARY KEY, mean_avg_price REAL)");
 
@@ -253,10 +253,11 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
     long processingTime = std::chrono::duration_cast<std::chrono::milliseconds>(endProcessing - startProcessing).count();
 
     switch (numThreads)
-    {
+    {   
         case 1:
             stats.sequentialProcessingTime = processingTime + aggregationTime;
             stats.sequentialLoadTime = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad).count();
+            break;
         case 4:
             stats.parallel4ProcessingTime = processingTime + aggregationTime;
             stats.parallel4LoadTime = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad).count();
@@ -275,7 +276,7 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
 void Test()
 {
     Extractor extractor;
-    DataBase db("../databases/DB_Teste.db");
+    DataBase db("../databases/Database.db");
     const std::string file_path = "../generator/orders.json";
     TestResults results;
 
@@ -356,9 +357,10 @@ void Test()
     // RequestTrigger - processes fixed 15000-line chunks
     auto request_trigger = std::make_shared<RequestTrigger>();
     request_trigger->setCallback([&]()
-                                 {
+    {
         DataFrame<std::string> df = extractor.extractChunk(file_path, columns, 15000);
-        processFullPipeline("Request", df); });
+        processFullPipeline("Request", df); 
+    });
 
     // Start triggers
     SQLiteMockTrigger->start();
