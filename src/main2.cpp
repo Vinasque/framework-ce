@@ -348,8 +348,8 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
 void Test()
 {
     Extractor extractor;
-    DataBase db("../databases/DB_Teste.db");
-    const std::string file_path = "../generator/ordersCemMil.json";
+    DataBase db("../databases/Database.db");
+    const std::string file_path = "../generator/orders.json";
     TestResults results;
 
     printTableHeader();
@@ -367,10 +367,10 @@ void Test()
         stats.linesProcessed = df.numRows();
 
         // Run all pipeline variants
-        processSequentialChunk(db, "ordersCemMil", df, stats);
-        processParallelChunk(4, db, "ordersCemMil", df, stats);
-        processParallelChunk(8, db, "ordersCemMil", df, stats);
-        processParallelChunk(12, db, "ordersCemMil", df, stats);
+        processSequentialChunk(db, "orders", df, stats);
+        processParallelChunk(4, db, "orders", df, stats);
+        processParallelChunk(8, db, "orders", df, stats);
+        processParallelChunk(12, db, "orders", df, stats);
 
         results.allRuns.push_back(stats);
 

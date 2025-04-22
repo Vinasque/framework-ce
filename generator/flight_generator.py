@@ -55,7 +55,6 @@ def gerar_dados_voos(n=1000):
                 price = round(base_price * 1.5 if seat_class == 'Primeira' else base_price, 2)
                 assentos.append([flight_id, seat, seat_class, price, 0])
 
-    # Criando e salvando os DataFrames
     df_voos = pd.DataFrame(voos, columns=['flight_id', 'from', 'to', 'airline', 'remaining_seats', 'date'])
     df_assentos = pd.DataFrame(assentos, columns=['flight_id', 'seat', 'seat_class', 'price', 'taken'])
 
@@ -64,5 +63,4 @@ def gerar_dados_voos(n=1000):
 
     return df_voos, df_assentos
 
-# Gerando os CSVs
 df_voos, df_assentos = gerar_dados_voos()

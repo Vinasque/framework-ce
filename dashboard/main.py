@@ -8,22 +8,22 @@ def read_data_from_sqlite(db_path):
     cursor = conn.cursor()
 
     # Executar as queries para pegar os dados da tabela
-    cursor.execute("SELECT payment_method, price FROM faturamentoMetodo_ordersCemMil_4")
+    cursor.execute("SELECT payment_method, price FROM faturamentoMetodo_orders_4")
     payment_rows = cursor.fetchall()
 
-    cursor.execute("SELECT reservation_time, price FROM faturamento_ordersCemMil_4")
+    cursor.execute("SELECT reservation_time, price FROM faturamento_orders_4")
     date_rows = cursor.fetchall()
     
-    cursor.execute("SELECT user_country, price FROM faturamentoPaisUsuario_ordersCemMil_4")
+    cursor.execute("SELECT user_country, price FROM faturamentoPaisUsuario_orders_4")
     userC_rows = cursor.fetchall()
     
-    cursor.execute("SELECT seat_type, price FROM faturamentoTipoAssento_ordersCemMil_4")
+    cursor.execute("SELECT seat_type, price FROM faturamentoTipoAssento_orders_4")
     seatT_rows = cursor.fetchall()
 
-    cursor.execute("SELECT flight_number, reservation_count FROM flight_stats_ordersCemMil_4")
+    cursor.execute("SELECT flight_number, reservation_count FROM flight_stats_orders_4")
     flight_stats = cursor.fetchall()
     
-    cursor.execute("SELECT destination, reservation_count FROM destination_stats_ordersCemMil_4")
+    cursor.execute("SELECT destination, reservation_count FROM destination_stats_orders_4")
     destination_stats = cursor.fetchall()
 
     conn.close()
@@ -134,7 +134,7 @@ def plot_revenue(dates, revenues, payment_methods, payment_revenues,
 
 # Função principal
 def main():
-    db_path = 'databases/DB_Teste.db'
+    db_path = 'databases/Database.db'
     (payment_methods, payment_revenues, dates, revenues, 
      countries, country_revenues, seat_types, seat_revenues,
      flight_numbers, flight_counts, destinations, destination_counts) = read_data_from_sqlite(db_path)
