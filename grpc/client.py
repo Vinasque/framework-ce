@@ -37,4 +37,13 @@ def generate_random_event():
 
     reservation_time = faker.date_time_between(start_date="-600d", end_date="now").isoformat()
 
-    return 0
+    return event_pb2.Event(
+        flight_id=flight_id,
+        seat=seat,
+        user_id=str(user_id),
+        customer_name=customer_name,
+        status=status,
+        payment_method=payment_method,
+        reservation_time=reservation_time,
+        price=str(price)
+    )
