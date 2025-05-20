@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package events;
+
+service EventService {
+  rpc SendEvent (Event) returns (Ack);
+}
+
+message Event {
+  string flight_id = 1;
+  string seat = 2;
+  string user_id = 3;
+  string customer_name = 4;
+  string status = 5;
+  string payment_method = 6;
+  string reservation_time = 7;
+  string price = 8;
+}
+
+message Ack {
+  string message = 1;
+}
