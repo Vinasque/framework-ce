@@ -1,7 +1,10 @@
-import pandas as pd
+import grpc
+import time
 import random
 import event_pb2
+import event_pb2_grpc
 from faker import Faker
+from concurrent import futures
 
 faker = Faker()
 
@@ -47,3 +50,13 @@ def generate_random_event():
         reservation_time=reservation_time,
         price=str(price)
     )
+
+def run(client_id=0, repetitions=5, sleep_between=1):
+    channel = grpc.insecure_channel('localhost:50051')
+    stub = event_pb2_grpc.EventServiceStub(channel)
+
+    for i in range(repetitions):
+        event = generate_random_event()
+        response = stub.SendEvent(event)
+        print(f"[Client {client_id}] Received: {response.message}")
+        time.sleep(sleep_between)
