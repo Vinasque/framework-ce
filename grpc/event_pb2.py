@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0b\x65vent.proto\x12\x06\x65vents\"\xa1\x01\n\x05\x45vent\x12\x11\n\tflight_id\x18\x01 \x01(\t\x12\x0c\n\x04seat\x18\x02 \x01(\t\x12\x0f\n\x07user_id\x18\x03 \x01(\t\x12\x15\n\rcustomer_name\x18\x04 \x01(\t\x12\x0e\n\x06status\x18\x05 \x01(\t\x12\x16\n\x0epayment_method\x18\x06 \x01(\t\x12\x18\n\x10reservation_time\x18\x07 \x01(\t\x12\r\n\x05price\x18\x08 \x01(\t\"\x16\n\x03\x41\x63k\x12\x0f\n\x07message\x18\x01 \x01(\t27\n\x0c\x45ventService\x12\'\n\tSendEvent\x12\r.events.Event\x1a\x0b.events.Ackb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0b\x65vent.proto\x12\x06\x65vents\"\xb4\x01\n\x05\x45vent\x12\x11\n\tflight_id\x18\x01 \x01(\t\x12\x0c\n\x04seat\x18\x02 \x01(\t\x12\x0f\n\x07user_id\x18\x03 \x01(\t\x12\x15\n\rcustomer_name\x18\x04 \x01(\t\x12\x0e\n\x06status\x18\x05 \x01(\t\x12\x16\n\x0epayment_method\x18\x06 \x01(\t\x12\x18\n\x10reservation_time\x18\x07 \x01(\t\x12\r\n\x05price\x18\x08 \x01(\t\x12\x11\n\ttimestamp\x18\t \x01(\x03\"\x16\n\x03\x41\x63k\x12\x0f\n\x07message\x18\x01 \x01(\t27\n\x0c\x45ventService\x12\'\n\tSendEvent\x12\r.events.Event\x1a\x0b.events.Ackb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,9 +32,9 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'event_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_EVENT']._serialized_start=24
-  _globals['_EVENT']._serialized_end=185
-  _globals['_ACK']._serialized_start=187
-  _globals['_ACK']._serialized_end=209
-  _globals['_EVENTSERVICE']._serialized_start=211
-  _globals['_EVENTSERVICE']._serialized_end=266
+  _globals['_EVENT']._serialized_end=204
+  _globals['_ACK']._serialized_start=206
+  _globals['_ACK']._serialized_end=228
+  _globals['_EVENTSERVICE']._serialized_start=230
+  _globals['_EVENTSERVICE']._serialized_end=285
 # @@protoc_insertion_point(module_scope)

@@ -307,6 +307,20 @@ void Test()
             return;
         }
 
+        // Calculate latency
+        long total_latency = 0;
+        auto now = std::chrono::system_clock::now();
+        auto now_ms = std::chrono::time_point_cast<std::chrono::milliseconds>(now);
+        long current_time = now_ms.time_since_epoch().count();
+
+        for (int i = 0; i < df.numRows(); ++i) {
+            long event_time = std::stol(df.getValue("timestamp", i));
+            total_latency += (current_time - event_time);
+        }
+
+        long avg_latency = total_latency / df.numRows();
+        std::cout << "Average latency for " << triggerType << ": " << avg_latency << "ms\n";
+
         TestResults::RunStats stats;
         stats.triggerType = triggerType;
         stats.linesProcessed = df.numRows();

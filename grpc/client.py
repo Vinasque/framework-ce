@@ -9,11 +9,11 @@ from concurrent import futures
 
 faker = Faker()
 
-df_users = pd.read_csv("generator/users.csv")
+df_users = pd.read_csv("../generator/users.csv")
 user_map = df_users.set_index("user_id")["username"].to_dict()
 user_ids = list(user_map.keys())
 
-df_seats = pd.read_csv("generator/flights_seats.csv")
+df_seats = pd.read_csv("../generator/flights_seats.csv")
 df_available_seats = df_seats[df_seats["taken"] == 0].copy()
 
 assert len(df_available_seats) > 0, "Não há assentos disponíveis!"
@@ -42,6 +42,8 @@ def generate_random_event():
 
     reservation_time = faker.date_time_between(start_date="-600d", end_date="now").isoformat()
 
+    timestamp = int(time.time() * 1000)
+
     # Monta o evento no formato gRPC
     return event_pb2.Event(
         flight_id=flight_id,
@@ -51,12 +53,13 @@ def generate_random_event():
         status=status,
         payment_method=payment_method,
         reservation_time=reservation_time,
-        price=str(price)
+        price=str(price),
+        timestamp=timestamp
     )
 
 # Representa um cliente que envia vários eventos
 def run(client_id=0, repetitions=5, sleep_between=1):
-    channel = grpc.insecure_channel('localhost:50051') # endereço padrão do servidor
+    channel = grpc.insecure_channel('0.0.0.0:50051')
     stub = event_pb2_grpc.EventServiceStub(channel)
 
     for i in range(repetitions):

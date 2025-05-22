@@ -9,6 +9,7 @@
 #include <cstring>
 #include "sqlite3.h"
 #include <mutex>
+#include "dataframe.hpp"
 
 class DataBase {
 public:
@@ -89,8 +90,8 @@ public:
     }
 
     void bulkInsert(const std::string& table_name, 
-        const DataFrame<std::string>& df, 
-        const std::vector<std::string>& columns) {
+                const DataFrame<std::string>& df,
+                const std::vector<std::string>& columns) {
 
         sqlite3_stmt *stmt;
 
@@ -143,7 +144,7 @@ public:
     // imprimir a tabela
     void printTable(const std::string& tableName) {
         std::lock_guard<std::mutex> lock(dbMutex);
-        auto callback = [](void* data, int argc, char** argv, char** colNames) -> int {
+        auto callback = [](void* /*data*/, int argc, char** argv, char** colNames) -> int {
             for(int i = 0; i < argc; i++) {
                 std::cout << colNames[i] << ": " << (argv[i] ? argv[i] : "NULL") << "\t";
             }

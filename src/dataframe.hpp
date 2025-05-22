@@ -468,7 +468,7 @@ DataFrame<T> extractFirstNLines(int n) {
 private:
     // achar o index da coluna por nome
     int column_id(const std::string& columnName) const {
-        for (int i = 0; i < columns.size(); i++) {
+        for (size_t i = 0; i < columns.size(); i++) { 
             if (columns[i] == columnName) {
                 return i;
             }
