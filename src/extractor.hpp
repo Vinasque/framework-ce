@@ -288,40 +288,49 @@ public:
                 throw std::runtime_error("Failed to execute query: " + std::string(sqlite3_errmsg(db)));
             }
 
-            std::vector<std::string> columns;
+            std::vector<std::string> columns_from_db; // To store column names retrieved from DB
             std::vector<std::vector<std::string>> data;
 
             // Get column names
             int columnCount = sqlite3_column_count(stmt);
             for (int i = 0; i < columnCount; ++i) {
-                columns.push_back(sqlite3_column_name(stmt, i));
+                columns_from_db.push_back(sqlite3_column_name(stmt, i));
             }
 
             // Get rows of data
             while (sqlite3_step(stmt) == SQLITE_ROW) {
                 std::vector<std::string> row;
                 for (int i = 0; i < columnCount; ++i) {
+                    // Get column name for type-specific extraction
+                    std::string colName = sqlite3_column_name(stmt, i);
+                    
                     // Check if the column value is NULL
                     if (sqlite3_column_type(stmt, i) == SQLITE_NULL) {
                         row.push_back(""); // Replace NULL with empty string
                     } else {
-                        const char* val = reinterpret_cast<const char*>(sqlite3_column_text(stmt, i));
-                        row.push_back(val ? val : ""); // Handle non-NULL values
+                        // Special handling for timestamp, which is INTEGER
+                        if (colName == "timestamp") {
+                            long long timestamp_val = sqlite3_column_int64(stmt, i);
+                            row.push_back(std::to_string(timestamp_val));
+                        } else {
+                            const char* val = reinterpret_cast<const char*>(sqlite3_column_text(stmt, i));
+                            row.push_back(val ? val : ""); // Handle non-NULL string values
+                        }
                     }
                 }
                 data.push_back(row);
             }
 
-            char* errMsg;
-            query = ("DELETE FROM " + tableName + ";");
-            rc = sqlite3_exec(db, query.c_str(), nullptr, nullptr, &errMsg);
+            // char* errMsg;
+            // query = ("DELETE FROM " + tableName + ";"); // This deletes all data from the table
+            // rc = sqlite3_exec(db, query.c_str(), nullptr, nullptr, &errMsg); // COMMENTED OUT
 
             sqlite3_finalize(stmt);
             sqlite3_close(db);
 
-            // Prepare tne DataFrame
+            // Prepare the DataFrame
             std::vector<Series<std::string>> series;
-            for (size_t i = 0; i < columns.size(); ++i) {
+            for (size_t i = 0; i < columns_from_db.size(); ++i) {
                 std::vector<std::string> columnData;
                 for (const auto& row : data) {
                     columnData.push_back(row[i]);
@@ -329,7 +338,7 @@ public:
                 series.push_back(Series<std::string>(columnData));
             }
 
-            DataFrame<std::string> resultDf = DataFrame<std::string>(columns, series);
+            DataFrame<std::string> resultDf = DataFrame<std::string>(columns_from_db, series);
 
             return resultDf;
         } catch (const std::exception& e) {

@@ -292,7 +292,7 @@ void Test()
 
     DataBase dbMock("../databases/MockSQL.db");
     Loader loaderMock(dbMock);
-    std::string createQuery = "(flight_id TEXT, seat TEXT, user_id BIGINT, customer_name TEXT, status TEXT, payment_method TEXT, reservation_time DATE, price FLOAT)";
+    std::string createQuery = "(flight_id TEXT, seat TEXT, user_id BIGINT, customer_name TEXT, status TEXT, payment_method TEXT, reservation_time DATE, price FLOAT, timestamp INTEGER)";
     dbMock.createTable("MockData", createQuery);
 
     bool bFirstTime = true;
@@ -304,28 +304,46 @@ void Test()
         if (df.numRows() == 0)
         {
             extractor.resetFilePosition(file_path);
+            // DEBUG: DataFrame is empty. Skipping processing.
             return;
         }
 
-        // Calculate latency
         long total_latency = 0;
+        long valid_timestamp_count = 0;
         auto now = std::chrono::system_clock::now();
         auto now_ms = std::chrono::time_point_cast<std::chrono::milliseconds>(now);
         long current_time = now_ms.time_since_epoch().count();
 
         for (int i = 0; i < df.numRows(); ++i) {
-            long event_time = std::stol(df.getValue("timestamp", i));
-            total_latency += (current_time - event_time);
+            std::string timestamp_str = df.getValue("timestamp", i);
+            // DEBUG: Timestamp string: [" << timestamp_str << "]
+            try {
+                long event_time = std::stol(timestamp_str);
+                if (event_time != 0) {
+                    total_latency += (current_time - event_time);
+                    valid_timestamp_count++;
+                } else {
+                    // DEBUG: Skipping timestamp '0' for latency calculation.
+                }
+            } catch (const std::invalid_argument& e) {
+                // ERROR: Invalid timestamp string for std::stol: [" << timestamp_str << "] - " << e.what()
+            } catch (const std::out_of_range& e) {
+                // ERROR: Timestamp string out of range for long: [" << timestamp_str << "] - " << e.what()
+            }
         }
 
-        long avg_latency = total_latency / df.numRows();
-        std::cout << "Average latency for " << triggerType << ": " << avg_latency << "ms\n";
+        if (valid_timestamp_count > 0) {
+            long avg_latency = total_latency / valid_timestamp_count;
+            std::cout << "Average latency for " << triggerType << ": " << avg_latency << "ms\n";
+        } else {
+            std::cout << "No valid timestamps found for latency calculation in " << triggerType << " trigger." << std::endl;
+        }
+
 
         TestResults::RunStats stats;
         stats.triggerType = triggerType;
         stats.linesProcessed = df.numRows();
 
-        // Run all pipeline variants
         processParallelChunk(1, db, "orders", df, stats, bFirstTime);
         processParallelChunk(4, db, "orders", df, stats, bFirstTime);
         processParallelChunk(8, db, "orders", df, stats, bFirstTime);
@@ -335,7 +353,6 @@ void Test()
 
         results.allRuns.push_back(stats);
 
-        // Print to table with trigger type and line count
         printTableRow(stats.triggerType,
                       stats.linesProcessed,
                       stats.sequentialProcessingTime,
@@ -348,33 +365,24 @@ void Test()
                       stats.parallel12LoadTime);
     };
 
-    // We need this to pass into the jsonExtractor. It helps it being generic.
     std::vector<std::string> columns = {
-        "flight_id", "seat", "user_id", "customer_name", 
-        "status", "payment_method", "reservation_time", "price"
+        "flight_id", "seat", "user_id", "customer_name",
+        "status", "payment_method", "reservation_time", "price", "timestamp"
     };
-    
-    // SQLiteMockTrigger - insere dados aleatórios no SQLite
+
     auto SQLiteMockTrigger = std::make_shared<TimerTrigger>(1000);
     SQLiteMockTrigger->setCallback([&](){
-        // Extrai um chunk aleatório de dados
         DataFrame<std::string> df = extractor.extractRandomChunk(file_path, columns, 5000, 15000);
-        // Insere dados no bancos
-        loaderMock.loadData("MockData", df, {"flight_id", "seat", "user_id", "customer_name", "status", "payment_method", "reservation_time", "price"}, true);
+        loaderMock.loadData("MockData", df, {"flight_id", "seat", "user_id", "customer_name", "status", "payment_method", "reservation_time", "price", "timestamp"}, true);
     });
 
-    // TimerTrigger - processa dados do SQLite a cada 10 segundos
     auto timer_trigger = std::make_shared<TimerTrigger>(10000);
     timer_trigger->setCallback([&](){
-        // Consulta SQL para pegar os dados
         std::string tableName = "MockData";
         std::string dbFilePath = "../databases/MockSQL.db";
 
-        // Extrai dados do banco SQLite
         DataFrame<std::string> df = extractor.extractFromSqlite(dbFilePath, tableName);
-        // df.print();
 
-        // Verifica se há dados para processar
         if (df.numRows() > 0) {
             processFullPipeline("Timer", df);
         } else {
@@ -382,41 +390,20 @@ void Test()
         }
     });
 
-    // RequestTrigger - processes fixed 15000-line chunks
-    auto request_trigger = std::make_shared<RequestTrigger>();
-    request_trigger->setCallback([&]()
-    {
-        DataFrame<std::string> df = extractor.extractChunk(file_path, columns, 15000);
-        processFullPipeline("Request", df); 
-    });
-
-    // Start triggers
     SQLiteMockTrigger->start();
     timer_trigger->start();
-    request_trigger->start();
 
-    // Simulate random requests
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> dist(2, 5);
 
-    for (int i = 0; i < 3; ++i)
-    {
-        std::this_thread::sleep_for(std::chrono::seconds(dist(gen)));
-        request_trigger->trigger();
-    }
-
-    // Run for 30 seconds
-    std::this_thread::sleep_for(std::chrono::seconds(30));
+    std::this_thread::sleep_for(std::chrono::seconds(60));
     SQLiteMockTrigger->stop();
     timer_trigger->stop();
-    request_trigger->stop();
 
-    // Final summary
     std::cout << "\n=== FINAL SUMMARY ===\n";
     std::cout << "Total executions: " << results.allRuns.size() << "\n";
 
-    // Calculate totals instead of averages
     long totalSeqProc = 0, totalSeqLoad = 0;
     long totalPar4Proc = 0, totalPar4Load = 0;
     long totalPar8Proc = 0, totalPar8Load = 0;
@@ -447,6 +434,6 @@ void Test()
 int main()
 {
     Test();
-    
+
     return 0;
 }

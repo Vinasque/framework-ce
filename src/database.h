@@ -26,6 +26,16 @@ public:
             std::cerr << "Erro ao abrir o banco de dados: " << sqlite3_errmsg(db) << std::endl;
             throw std::runtime_error("Erro ao abrir o banco de dados");
         }
+        // Set busy timeout to 5 seconds (5000 milliseconds)
+        sqlite3_busy_timeout(db, 5000);
+
+        // ADDED: Set WAL journal mode for better concurrency
+        const char* wal_pragma = "PRAGMA journal_mode=WAL;";
+        int wal_rc = sqlite3_exec(db, wal_pragma, nullptr, nullptr, &errMsg);
+        if (wal_rc != SQLITE_OK) {
+            std::cerr << "Erro ao definir journal_mode para WAL: " << errMsg << std::endl;
+            sqlite3_free(errMsg);
+        }
     }
 
     ~DataBase() {
