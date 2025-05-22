@@ -59,7 +59,7 @@ def generate_random_event():
 
 # Representa um cliente que envia vários eventos
 def run(client_id=0, repetitions=5, sleep_between=1):
-    channel = grpc.insecure_channel('0.0.0.0:50051')
+    channel = grpc.insecure_channel('localhost:50051')
     stub = event_pb2_grpc.EventServiceStub(channel)
 
     for i in range(repetitions):
