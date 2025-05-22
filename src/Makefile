@@ -6,6 +6,9 @@ TARGET = $(TARGET_DIR)/server.exe
 CPP_SOURCES = server.cpp
 PROTO_SOURCES = $(GRPC_DIR)/event.pb.cc $(GRPC_DIR)/event.grpc.pb.cc
 
+TARGET_ETL = $(TARGET_DIR)/etl.exe
+CPP_SOURCES_ETL = main.cpp
+
 # Modified compiler flags with library paths
 CXXFLAGS = -std=c++17 -I$(SQLITE_DIR) -I$(GRPC_DIR) -I. -I/usr/local/include
 LDFLAGS = -L/usr/local/lib \
@@ -32,6 +35,8 @@ all:
 	
 	# Link with correct order
 	$(CXX) -o $(TARGET) *.o $(LDFLAGS)
+
+	$(CXX) $(CXXFLAGS) -o $(TARGET_ETL) $(CPP_SOURCES_ETL) sqlite3.o $(LDFLAGS)
 
 clean:
 	rm -f $(TARGET) *.o *.db ../databases/*.db 2>/dev/null || true

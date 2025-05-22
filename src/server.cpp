@@ -52,6 +52,6 @@ void RunServer(const std::string& server_address, const std::string& db_path) {
 }
 
 int main(int /*argc*/, char** /*argv*/) {
-    RunServer("0.0.0.0:50051", "../databases/MockSQL.db");
+    RunServer("localhost:50051", "../databases/MockSQL.db");
     return 0;
 }

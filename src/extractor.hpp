@@ -301,7 +301,13 @@ public:
             while (sqlite3_step(stmt) == SQLITE_ROW) {
                 std::vector<std::string> row;
                 for (int i = 0; i < columnCount; ++i) {
-                    row.push_back(reinterpret_cast<const char*>(sqlite3_column_text(stmt, i)));
+                    // Check if the column value is NULL
+                    if (sqlite3_column_type(stmt, i) == SQLITE_NULL) {
+                        row.push_back(""); // Replace NULL with empty string
+                    } else {
+                        const char* val = reinterpret_cast<const char*>(sqlite3_column_text(stmt, i));
+                        row.push_back(val ? val : ""); // Handle non-NULL values
+                    }
                 }
                 data.push_back(row);
             }
