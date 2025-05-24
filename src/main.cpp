@@ -71,6 +71,19 @@ struct TestResults
     std::vector<RunStats> allRuns;
 };
 
+unsigned int getOptimalThreadCount() {
+    unsigned int available_threads = std::thread::hardware_concurrency();
+    
+    // Se não conseguir detectar, usa um valor padrão seguro (4 threads)
+    if(available_threads == 0) {
+        std::cerr << "Não foi possível detectar o número de núcleos. Usando 4 threads como padrão." << std::endl;
+        return 4;
+    }
+    
+    std::cout << "Número de threads disponíveis: " << available_threads << std::endl;
+    return available_threads;
+}
+
 void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeArquivo,
     DataFrame<std::string> &df,
     TestResults::RunStats &stats,
@@ -433,7 +446,8 @@ void Test()
 
 int main()
 {
-    Test();
+    // Test();
+    std::cout << getOptimalThreadCount();
 
     return 0;
 }
