@@ -6,8 +6,17 @@ import event_pb2_grpc
 import pandas as pd
 from faker import Faker
 from concurrent import futures
+import csv
+import os
 
 faker = Faker()
+
+# Configuração do arquivo de resultados
+RESULTS_FILE = "response_times.csv"
+if not os.path.exists(RESULTS_FILE):
+    with open(RESULTS_FILE, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["num_clients", "avg_response_time"])
 
 df_users = pd.read_csv("../generator/users.csv")
 user_map = df_users.set_index("user_id")["username"].to_dict()
@@ -18,7 +27,6 @@ df_available_seats = df_seats[df_seats["taken"] == 0].copy()
 
 assert len(df_available_seats) > 0, "Não há assentos disponíveis!"
 
-# Gera um evento aleatório com base nos dados "reais"
 def generate_random_event():
     seat_row = df_available_seats.sample(n=1).iloc[0]
     flight_id = f"AAA-{seat_row['flight_id']}"
@@ -41,10 +49,8 @@ def generate_random_event():
     )[0]
 
     reservation_time = faker.date_time_between(start_date="-600d", end_date="now").isoformat()
-
     timestamp = int(time.time() * 1000)
 
-    # Monta o evento no formato gRPC
     return event_pb2.Event(
         flight_id=flight_id,
         seat=seat,
@@ -57,31 +63,63 @@ def generate_random_event():
         timestamp=timestamp
     )
 
-# Representa um cliente que envia vários eventos
 def run(client_id=0, repetitions=5, sleep_between=1):
     channel = grpc.insecure_channel('localhost:50051')
     stub = event_pb2_grpc.EventServiceStub(channel)
+    response_times = []
 
     for i in range(repetitions):
         event = generate_random_event()
-        response = stub.SendEvent(event)
-        print(f"[Client {client_id}] Received: {response.message}")
-        time.sleep(sleep_between) # pausa entre eventos
+        start_time = time.perf_counter()
+        
+        try:
+            response = stub.SendEvent(event)
+            end_time = time.perf_counter()
+            response_time = end_time - start_time
+            response_times.append(response_time)
+            
+            print(f"[Client {client_id}] Received: {response.message} | Time: {response_time:.4f}s")
+            
+        except grpc.RpcError as e:
+            end_time = time.perf_counter()
+            response_time = end_time - start_time
+            response_times.append(response_time)
+            
+            # Captura a mensagem de erro do servidor
+            status_code = e.code()
+            details = e.details()
+            
+            print(f"[Client {client_id}] Received: Cadastro inválido | Time: {response_time:.4f}s")
+        
+        time.sleep(sleep_between)
+    
+    return response_times
 
-# Executando múltiplos clientes em paralelo
 if __name__ == '__main__':
     import sys
     import threading
+    import numpy as np
 
-    # Nº de clientes e nº de eventos por cliente são argumentos opcionais
     num_clients = int(sys.argv[1]) if len(sys.argv) > 1 else 1
     events_per_client = int(sys.argv[2]) if len(sys.argv) > 2 else 5
 
     threads = []
+    all_response_times = []
+
+    # Executa os clientes
     for i in range(num_clients):
-        t = threading.Thread(target=run, args=(i, events_per_client))
+        t = threading.Thread(target=lambda: all_response_times.extend(run(i, events_per_client)))
         t.start()
         threads.append(t)
 
     for t in threads:
         t.join()
+
+    # Calcula a média e salva no arquivo
+    if all_response_times:
+        avg_time = np.mean(all_response_times)
+        print(f"\nMédia de tempo de resposta: {avg_time:.4f}s para {num_clients} clientes")
+        
+        with open(RESULTS_FILE, 'a', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([num_clients, avg_time])

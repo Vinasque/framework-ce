@@ -271,7 +271,6 @@ void processParallelChunk(int numThreads, DataBase &db, const std::string &nomeA
         loader.loadData("precoMedioPorAirline" + tableSuffix, dfMeanPrices[1], {"airline", "mean_avg_price"}, false);
     }
 
-    db.printTable("precoMedioPorAirline" + tableSuffix);
     auto endLoad = Clock::now();
 
     long aggregationTime = std::chrono::duration_cast<std::chrono::milliseconds>(endAggregation - startAggregation).count();

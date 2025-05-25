@@ -40,18 +40,37 @@ public:
 
     Status SendEvent(ServerContext* /*context*/, const Event* request, Ack* reply) override {
         try {
+            // Validação básica dos dados
+            if (request->flight_id().empty() || 
+                request->seat().empty() || 
+                request->user_id().empty() ||
+                request->customer_name().empty()) {
+                throw std::runtime_error("Dados obrigatórios não fornecidos");
+            }
+
+            // Validação do status
+            const std::string status = request->status();
+            if (status != "pending" && status != "confirmed" && status != "cancelled") {
+                throw std::runtime_error("Status inválido");
+            }
+
+            // Validação do timestamp
+            if (request->timestamp() <= 0) {
+                throw std::runtime_error("Timestamp inválido");
+            }
+
             // Log dos dados recebidos
             std::cout << "\n=== NOVO EVENTO RECEBIDO ===" << std::endl;
             std::cout << "Flight ID: " << request->flight_id() << std::endl;
             std::cout << "Seat: " << request->seat() << std::endl;
             std::cout << "User ID: " << request->user_id() << std::endl;
             std::cout << "Customer: " << request->customer_name() << std::endl;
-            std::cout << "Status: " << request->status() << std::endl;
+            std::cout << "Status: " << status << std::endl;
             std::cout << "Payment Method: " << request->payment_method() << std::endl;
             std::cout << "Reservation Time: " << request->reservation_time() << std::endl;
             std::cout << "Price: " << request->price() << std::endl;
             std::cout << "Timestamp: " << formatTimestamp(request->timestamp()) 
-                      << " (" << request->timestamp() << ")" << std::endl;
+                    << " (" << request->timestamp() << ")" << std::endl;
 
             // Converter o evento para DataFrame
             DataFrame<std::string> df = extractor.extractFromGrpcEvent(request);
@@ -61,7 +80,7 @@ public:
             bool current_first_run = first_run.exchange(false);
             
             std::cout << "Iniciando processamento paralelo com " 
-                      << std::thread::hardware_concurrency() << " threads..." << std::endl;
+                    << std::thread::hardware_concurrency() << " threads..." << std::endl;
             
             processParallelChunk(
                 getOptimalThreadCount(df.numRows()),
@@ -79,8 +98,8 @@ public:
             return Status::OK;
         } catch (const std::exception& e) {
             std::cerr << "ERRO NO PROCESSAMENTO: " << e.what() << std::endl;
-            reply->set_message(std::string("Erro: ") + e.what());
-            return Status(grpc::INTERNAL, e.what());
+            reply->set_message("Cadastramento inválido: " + std::string(e.what()));
+            return Status(grpc::INVALID_ARGUMENT, "Cadastramento inválido");
         }
     }
 
