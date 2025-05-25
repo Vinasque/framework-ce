@@ -5,9 +5,14 @@
 #include <iostream>
 #include "dataframe.hpp"
 #include "queue.hpp"
+#include "event.pb.h"
 #include <sqlite3.h>
 #include <mutex>
 #include <random>
+
+namespace events {
+    class Event;  // Forward declaration
+}
 
 class Extractor {
 private:
@@ -406,5 +411,28 @@ public:
             std::cerr << "Extraction error: " << e.what() << std::endl;
             throw;
         }
+    }
+
+    DataFrame<std::string> extractFromGrpcEvent(const events::Event* event) {
+        std::vector<std::string> columns = {
+            "flight_id", "seat", "user_id", "customer_name",
+            "status", "payment_method", "reservation_time", 
+            "price", "timestamp"
+        };
+
+        std::vector<Series<std::string>> series;
+        series.reserve(columns.size());  
+        
+        series.emplace_back(std::vector<std::string>{event->flight_id()});
+        series.emplace_back(std::vector<std::string>{event->seat()});
+        series.emplace_back(std::vector<std::string>{event->user_id()});
+        series.emplace_back(std::vector<std::string>{event->customer_name()});
+        series.emplace_back(std::vector<std::string>{event->status()});
+        series.emplace_back(std::vector<std::string>{event->payment_method()});
+        series.emplace_back(std::vector<std::string>{event->reservation_time()});
+        series.emplace_back(std::vector<std::string>{event->price()});
+        series.emplace_back(std::vector<std::string>{std::to_string(event->timestamp())});
+
+        return DataFrame<std::string>(columns, series);
     }
 };

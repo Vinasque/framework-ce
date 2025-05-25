@@ -18,7 +18,7 @@ LDFLAGS = -lgrpc++ -lgrpc \
           -labsl_synchronization -labsl_raw_logging_internal -labsl_bad_optional_access \
           -labsl_str_format_internal -labsl_time -labsl_base \
           -laddress_sorting -lgpr -lupb -lcares -lre2 \
-          -lpthread -lsqlite3 -lssl -lcrypto
+          -lpthread -lssl -lcrypto
 
 all: $(TARGET_DIR) $(TARGET) $(TARGET_ETL)
 
